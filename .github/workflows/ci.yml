@@ -2,6 +2,9 @@ name: Source checks and ESP32-S3 build
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   source:
     runs-on: ubuntu-24.04
