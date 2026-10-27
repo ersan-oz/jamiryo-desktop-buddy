@@ -1,0 +1,26 @@
+name: Source checks and ESP32-S3 build
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python scripts/check_public_release.py
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/check_ha_messages.py
+      - run: python -m compileall -q scripts tests
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.1
+          target: esp32s3
+          command: python scripts/build.py
