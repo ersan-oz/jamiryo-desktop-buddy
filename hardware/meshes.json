@@ -1,0 +1,68 @@
+{
+  "intended_units": "millimetres; STL is unitless",
+  "parts": [
+    {
+      "path": "hardware/stl/head.stl",
+      "geometry_preserved": true,
+      "inspection": {
+        "bytes": 115184,
+        "triangles": 2302,
+        "extents": [
+          60.0,
+          45.0,
+          65.0
+        ],
+        "boundary_edges": 0,
+        "nonmanifold_edges": 182,
+        "duplicate_faces": 468,
+        "degenerate_triangles": 0,
+        "edge_coordinate_rounding_decimals": 5,
+        "two_faces_per_edge": false,
+        "triangle_payload_sha256": "ed27f54e73d693e0b987484625e0c42ffd798b6a124ff6086a9c538df14c6d41",
+        "file_sha256": "e3cb2076b957d2a8c72c48a75f40a963a272d9defd0dc2b6f541e2b28262a381"
+      }
+    },
+    {
+      "path": "hardware/stl/cover.stl",
+      "geometry_preserved": true,
+      "inspection": {
+        "bytes": 28684,
+        "triangles": 572,
+        "extents": [
+          60.0,
+          4.5,
+          65.0
+        ],
+        "boundary_edges": 0,
+        "nonmanifold_edges": 0,
+        "duplicate_faces": 0,
+        "degenerate_triangles": 0,
+        "edge_coordinate_rounding_decimals": 5,
+        "two_faces_per_edge": true,
+        "triangle_payload_sha256": "122dcbd5fd5afca0e086bd04794bd8902b013aa5a9f9f38ca5634ec02c6ad01f",
+        "file_sha256": "92a50588ce6c98259a0ab914bdc838ddf49b50db20219929791487c8fb132d06"
+      }
+    },
+    {
+      "path": "hardware/stl/base.stl",
+      "geometry_preserved": true,
+      "inspection": {
+        "bytes": 70484,
+        "triangles": 1408,
+        "extents": [
+          79.9814,
+          79.9907,
+          36.5
+        ],
+        "boundary_edges": 0,
+        "nonmanifold_edges": 0,
+        "duplicate_faces": 0,
+        "degenerate_triangles": 0,
+        "edge_coordinate_rounding_decimals": 5,
+        "two_faces_per_edge": true,
+        "triangle_payload_sha256": "35423959f63e382a5b4b11d21453425464584d81d6701b69fcaab99d37d27566",
+        "file_sha256": "c0b74dc48c122c533375a80e52f0251b5b8c22877f7709b60a3bbde48c6bf496"
+      }
+    }
+  ]
+}
