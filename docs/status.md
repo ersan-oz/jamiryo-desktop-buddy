@@ -20,7 +20,8 @@ passed a complete hardware acceptance test.
 | Battery level/percentage | Not implemented |
 | Exact local “Jamiryo” wake word / deep low-power standby | Not implemented |
 | Capacitive touch, mobile base, docking | Not implemented |
-| Printable enclosure CAD/STL | Not supplied |
+| Printable enclosure STL | Head, cover and base supplied; see [mesh and print notes](../hardware/README.md) |
+| Editable enclosure CAD / verified slicer profile | Not supplied |
 
 ## Public validation record
 
@@ -31,7 +32,7 @@ Local validation completed on 27 October 2026:
 - OTA package validation: **PASS** for image checksum/SHA-256, damaged image
   rejection, both app-slot sizes, preserved NVS offsets and shared model hashes.
 - Public-file audit: **PASS**. Matched secret values are never written to its output.
-- Host release/privacy/document-link tests: **6 passed**.
+- Host release/privacy/document-link/STL tests: **10 passed**.
 - HA native-Jinja protocol/template groups: **7 passed**, with no network requests.
 
 The application is 2,409,840 bytes and fits both `0x2E0000` application slots.
@@ -60,5 +61,5 @@ energy budget; battery runtime and supply peak capability require measurements.
 - Measure power/runtime and design validated battery-voltage sensing.
 - Train and evaluate a consented local wake-word model before claiming it works.
 - Improve English runtime/UI coverage and configurable character/voice settings.
-- Publish dimensioned enclosure files if the original design sources become available.
+- Add dimensioned parametric CAD, assembly drawings and verified slicer profiles.
 - Add repeatable consented vision and acoustic acceptance procedures.

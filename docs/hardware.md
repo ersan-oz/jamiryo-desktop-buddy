@@ -96,6 +96,11 @@ design. Routine paired Wi-Fi updates avoid that rewiring.
 
 ## Mechanical limits
 
+The supplied [head, cover and base STL files](../hardware/README.md) are available
+with dimensions and mesh-inspection notes. Review those notes before printing,
+especially the head export's coincident faces/nonmanifold edges. Editable CAD
+and a verified slicer profile are not supplied.
+
 Keep the camera's view separate from the OLED window. Leave microphone/speaker
 openings and room for wiring to flex during head rotation. There is no slip
 ring: use bounded movement and never wind the cable around the axis. Mount the

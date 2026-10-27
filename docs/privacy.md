@@ -12,6 +12,10 @@ Generated offline tones are original mathematical waveforms. The persona is
 generalized; an owner's private conversation, household configuration and
 personal character requests are not bundled as an example installation.
 
+The three enclosure STL exports use a fixed generic binary header; their free-text
+CAD metadata is not published. Triangle payloads remain unchanged. Only the
+reviewed mesh paths are accepted by the public-file checker.
+
 ## Runtime data
 
 | Data | Where it goes / persists |
