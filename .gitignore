@@ -1,0 +1,40 @@
+# Generated SDK/build output and downloaded dependencies
+/.local/
+/build/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+/dist/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Never publish personal/device state, credentials, captures or flash backups
+.env
+.env.*
+!.env.example
+*.dpapi
+*.pem
+*.key
+*.log
+*.bin
+*.elf
+*.map
+*.espdl
+*.nvs
+credentials*.json
+wifi-devices*
+/logs/
+/backups/
+/face-fixtures/
+/face_store/
+/home_store/
+/photos/
+/recordings/
+
+# Generated original tones and prompt copy; regenerate from scripts/prepare_assets.py
+/main/assets/*.pcm
+/main/assets/personality.txt
+*.zip
+.DS_Store
+Thumbs.db
