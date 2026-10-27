@@ -1,0 +1,121 @@
+{
+  "alias": "Send to Jamiryo",
+  "description": "Send a question, spoken message or single-photo request from a phone.",
+  "icon": "mdi:robot-happy-outline",
+  "mode": "single",
+  "max_exceeded": "silent",
+  "fields": {
+    "mode": {
+      "name": "Action",
+      "selector": {
+        "select": {
+          "options": [
+            "ask",
+            "say",
+            "photo"
+          ]
+        }
+      }
+    },
+    "message": {
+      "name": "Message",
+      "selector": {
+        "text": {}
+      }
+    }
+  },
+  "sequence": [
+    {
+      "variables": {
+        "send_mode": "{{ mode | default({'Ask Jamiryo':'ask','Read aloud at home':'say','Send photo':'photo'}.get(states('input_select.jamiryo_mode'),'ask')) }}",
+        "send_text": "T:{{ message | default(states('input_text.jamiryo_message')) | string | trim }}",
+        "request_id": "m{{ utcnow().strftime('%Y%m%d%H%M%S%f') }}",
+        "previous": "{{ states('input_text.jamiryo_inbox')[3:] | from_json({}) }}"
+      }
+    },
+    {
+      "if": [
+        {
+          "condition": "template",
+          "value_template": "{{ as_timestamp(now()) - (state_attr('sensor.jamiryo_messenger','last_seen') | float(0)) > 45 }}"
+        }
+      ],
+      "then": [
+        {
+          "stop": "Jamiryo is offline. Check its power and home Wi-Fi connection.",
+          "error": true
+        }
+      ]
+    },
+    {
+      "if": [
+        {
+          "condition": "template",
+          "value_template": "{{ is_state('sensor.jamiryo_messenger','processing') }}"
+        }
+      ],
+      "then": [
+        {
+          "stop": "Wait for the current request to finish.",
+          "error": true
+        }
+      ]
+    },
+    {
+      "if": [
+        {
+          "condition": "template",
+          "value_template": "{{ previous.get('id','') and previous.get('id') != state_attr('sensor.jamiryo_messenger','request_id') and as_timestamp(now()) - (previous.get('at',0) | float(0)) < 120 }}"
+        }
+      ],
+      "then": [
+        {
+          "stop": "The previous request has not been received yet; wait briefly.",
+          "error": true
+        }
+      ]
+    },
+    {
+      "if": [
+        {
+          "condition": "template",
+          "value_template": "{{ send_mode not in ['ask','say','photo'] or (send_mode != 'photo' and not (send_text[2:] | trim)) }}"
+        }
+      ],
+      "then": [
+        {
+          "stop": "Enter a message or select Send photo.",
+          "error": true
+        }
+      ]
+    },
+    {
+      "variables": {
+        "envelope": "J1:{{ {'v':1,'id':request_id | string,'mode':send_mode | string,'text':('' if send_mode == 'photo' else send_text[2:]),'at':as_timestamp(now()) | int} | to_json(ensure_ascii=False) }}"
+      }
+    },
+    {
+      "if": [
+        {
+          "condition": "template",
+          "value_template": "{{ envelope | length > 255 }}"
+        }
+      ],
+      "then": [
+        {
+          "stop": "The message is too long; shorten it and try again.",
+          "error": true
+        }
+      ]
+    },
+    {
+      "action": "input_text.set_value",
+      "target": {
+        "entity_id": "input_text.jamiryo_inbox"
+      },
+      "data": {
+        "value": "{{ envelope }}"
+      }
+    }
+  ]
+}
