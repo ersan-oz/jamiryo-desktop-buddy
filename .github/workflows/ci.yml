@@ -4,10 +4,12 @@ permissions:
   contents: read
 jobs:
   source:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements-dev.txt
@@ -16,9 +18,11 @@ jobs:
       - run: python scripts/check_ha_messages.py
       - run: python -m compileall -q scripts tests
   firmware:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v6.0.1
