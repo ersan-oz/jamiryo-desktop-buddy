@@ -1,0 +1,16 @@
+{
+  "snapshot": "1.2.9-public1",
+  "date": "2026-10-27",
+  "target": "esp32s3",
+  "esp_idf": "6.0.1",
+  "source_build": true,
+  "package_validation": true,
+  "application_bytes": 2409840,
+  "application_sha256": "69ad859d3ae89364fd92bb78841391ab11d34ff08ed41ed9dd884ee1687e31b6",
+  "host_release_tests_passed": 6,
+  "ha_template_groups_passed": 7,
+  "ha_test_network_requests": 0,
+  "public_fork_flashed": false,
+  "remote_messaging_end_to_end": "pending",
+  "github_ci": "See actual repository Actions runs"
+}
