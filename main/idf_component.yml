@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=6.0.0,<6.1.0"
+  espressif/bmi270: "==1.1.0"
+  espressif/esp_codec_dev: "==1.6.2"
+  espressif/esp_websocket_client: "==1.5.0"
+  espressif/cjson: "^1.7.19"
+  espressif/esp32-camera: "==2.1.8"
+  espressif/human_face_recognition: "==0.3.2"
