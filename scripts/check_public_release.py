@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+from stl_mesh import PUBLIC_MESHES, inspect_mesh
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES = {
@@ -37,6 +38,14 @@ def audit_blob(name, data):
     path = Path(name)
     if path.suffix.lower() in FORBIDDEN or path.name in {'credentials.json', 'wifi-devices.dpapi'} or path.name.startswith('.env'):
         findings.append((0, 'forbidden artifact'))
+    if path.suffix.lower() == '.stl':
+        if name not in PUBLIC_MESHES:
+            return findings + [(0, 'unapproved STL')]
+        try:
+            inspect_mesh(data, require_public_header=True)
+        except ValueError:
+            findings.append((0, 'invalid STL / unreviewed metadata'))
+        return findings
     if path.suffix == '.png':
         if name != 'docs/assets/jamiryo.png' or data[:8] != b'\x89PNG\r\n\x1a\n':
             return findings + [(0, 'unapproved image')]
