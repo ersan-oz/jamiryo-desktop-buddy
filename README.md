@@ -8,7 +8,7 @@ ESP32-S3 · ESP-IDF · Gemini Live · Home Assistant
 
 <img src="docs/assets/jamiryo.png" alt="Jamiryo: an orange desktop robot with blue OLED eyes and a rotating head" width="380">
 
-[Build your own](docs/getting-started.md) · [Hardware & wiring](docs/hardware.md) · [How it works](docs/architecture.md) · [User guide](docs/user-guide.md)
+[Build your own](docs/getting-started.md) · [Printable parts](hardware/README.md) · [Hardware & wiring](docs/hardware.md) · [How it works](docs/architecture.md) · [User guide](docs/user-guide.md)
 
 </div>
 
@@ -73,9 +73,11 @@ remote-message flows, including which data leaves the device.
 - For portable use: a suitable protected 1S LiPo, compatible charger/5 V boost,
   appropriately rated switch and wiring, and a servo-side reservoir capacitor.
 
-The product photo shows a finished prototype enclosure. Printable CAD/STL files
-are **not included** in this source release. MPR121 touch, wheels and battery
-percentage sensing are not implemented in this snapshot.
+The product photo shows the prototype enclosure. Its three **printable STL
+exports** are included: [head, cover and base](hardware/README.md). Read the
+mesh/printing notes before use; native parametric CAD and a verified slicer
+profile are not included. MPR121 touch, wheels and battery percentage sensing
+are not implemented in this snapshot.
 
 Check the [pin table and power diagram](docs/hardware.md) before connecting
 anything. OLED supply tolerance does not imply 5 V-tolerant ESP32 data lines.
@@ -141,6 +143,7 @@ prompts/       public robot character and tool instructions
 home-assistant/  optional experimental dashboard and send script
 scripts/       isolated build, provisioning and Windows OTA tools
 docs/          English setup, hardware, architecture and usage guides
+hardware/      head, cover and base STL exports with mesh/printing notes
 ```
 
 ## Current limitations

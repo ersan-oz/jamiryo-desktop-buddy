@@ -22,7 +22,9 @@ Changes made for `1.2.9-public1`:
 No generated application/bootloader/model binary, NVS image, private manual,
 device log, pairing registry, enrolled person or household configuration is
 part of the repository. The product image is the supplied Jamiryo robot image,
-with metadata removed. No CAD/STL files are claimed to be included.
+with metadata removed. The subsequently supplied head, cover and base STL exports
+are in `hardware/stl`: their free-text headers are replaced and their triangle
+payloads are preserved. Native editable CAD files are not included.
 
 The public snapshot's local build checks are distinct from the private
 prototype's earlier hardware tests. See [status](docs/status.md).
