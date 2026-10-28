@@ -8,7 +8,7 @@ ESP32-S3 · ESP-IDF · Gemini Live · Home Assistant
 
 <img src="docs/assets/jamiryo.png" alt="Jamiryo: an orange desktop robot with blue OLED eyes and a rotating head" width="380">
 
-[Build your own](docs/getting-started.md) · [Printable parts](hardware/README.md) · [Hardware & wiring](docs/hardware.md) · [How it works](docs/architecture.md) · [User guide](docs/user-guide.md)
+[Build your own](docs/getting-started.md) · [New-home setup](home-assistant/README.md) · [Printable parts](hardware/README.md) · [Hardware & wiring](docs/hardware.md) · [How it works](docs/architecture.md) · [User guide](docs/user-guide.md)
 
 </div>
 
@@ -18,7 +18,7 @@ behavior runs on an M5Stack AtomS3R-CAM with an Echo/Voice Base. Gemini Live
 handles online conversation, and Home Assistant connects the robot to your home.
 
 This is a hobby prototype and a source release, rather than a finished consumer
-product. The public snapshot is **1.2.9-public1**. See [validation and known
+product. The public snapshot is **1.2.14-public1**. See [validation and known
 limits](docs/status.md) before flashing or relying on a feature.
 
 ## What it can do
@@ -34,7 +34,7 @@ limits](docs/status.md) before flashing or relying on a feature.
 | Small persistent memory | Explicit user facts/preferences in NVS; this does not retrain an AI model |
 | Home Assistant | Entity discovery, explicit Assist commands and a fresh camera photo sent through a registered phone notification |
 | Wi-Fi updates | Paired, authenticated LAN OTA with image/model checks, A/B application slots and boot confirmation |
-| Remote message panel | Experimental HA dashboard for questions, spoken messages and photo requests; final device-to-phone tests are pending |
+| Remote message panel | Native HA dashboard for questions, spoken messages and photo requests; prototype delivery tested, with step-by-step English/Turkish setup |
 
 The documentation and included HA dashboard are in English. The current robot
 persona, phone setup interface and many fixed phrases remain **Turkish**.
@@ -111,6 +111,19 @@ On a Windows computer paired once over USB, later updates use:
 See [OTA setup and recovery](docs/ota.md). Normal updates need no router port
 forwarding and must not be reported as successful until the new image confirms.
 
+## Set up another home
+
+Robot credentials and the Home Assistant dashboard are **two separate setup
+steps**. Saving Wi-Fi, Gemini and HA credentials on Jamiryo does not automatically
+install a menu on the new HA server.
+
+Follow the illustrated [new-home installation guide](home-assistant/README.md):
+create three helpers, add the matching send script/dashboard, select the
+Companion phone, then test questions, speaker playback and real photo delivery.
+An optional native HA package bundles the helpers and script. Matching
+[Turkish templates](home-assistant/tr/README.md) and a portable setup ZIP generator
+are included. No credentials are embedded in those files.
+
 ## Privacy and accounts
 
 This repository contains source code and generic examples. It does not include
@@ -140,7 +153,7 @@ main/
   sensors/     camera, image rotation and local face matching
   servo/       eased motion, tracking, search and motion arbitration
 prompts/       public robot character and tool instructions
-home-assistant/  optional experimental dashboard and send script
+home-assistant/  English/Turkish dashboard, send script and optional native package
 scripts/       isolated build, provisioning and Windows OTA tools
 docs/          English setup, hardware, architecture and usage guides
 hardware/      head, cover and base STL exports with mesh/printing notes
