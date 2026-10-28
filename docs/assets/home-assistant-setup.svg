@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="680" viewBox="0 0 1040 680" role="img" aria-labelledby="title desc">
+<title id="title">Jamiryo new-home setup</title><desc id="desc">Configure credentials on the robot, separately install Home Assistant helpers and script, then use a single Send message button. Generic illustration.</desc>
+<rect width="1040" height="680" rx="24" fill="#0c192b"/>
+<g font-family="Arial, sans-serif" fill="#edf3fa">
+<text x="40" y="54" font-size="27" font-weight="bold">One robot. Two setup steps.</text>
+<text x="40" y="83" font-size="16" fill="#adc1d2">A home profile does not automatically install the Home Assistant dashboard.</text>
+<rect x="40" y="115" width="455" height="205" rx="16" fill="#172d43"/>
+<rect x="545" y="115" width="455" height="205" rx="16" fill="#172d43"/>
+<text x="64" y="152" font-size="21" font-weight="bold" fill="#ff9a50">1  On Jamiryo</text>
+<text x="64" y="185" font-size="17">Setup Wi-Fi: Jamiryo-...</text>
+<text x="64" y="213" font-size="17">Home Wi-Fi + Gemini key</text>
+<text x="64" y="241" font-size="17">Local HA address + access token</text>
+<text x="64" y="283" font-size="15" fill="#adc1d2">Enter your own secrets only in the robot form.</text>
+<text x="569" y="152" font-size="21" font-weight="bold" fill="#65e0cf">2  In Home Assistant</text>
+<text x="569" y="185" font-size="17">3 helpers + send script</text>
+<text x="569" y="213" font-size="17">Dedicated Jamiryo dashboard</text>
+<text x="569" y="241" font-size="17">Select the Companion notification phone</text>
+<text x="569" y="283" font-size="15" fill="#adc1d2">No keys in template files. Once per HA server.</text>
+<rect x="40" y="351" width="960" height="285" rx="16" fill="#f3f7fa"/>
+<text x="65" y="390" font-size="22" fill="#11283d" font-weight="bold">Daily use</text>
+<rect x="65" y="409" width="420" height="55" rx="9" fill="#ffffff" stroke="#cbd8e2"/>
+<text x="82" y="443" font-size="17" fill="#314c63">Your message: Read-aloud test.</text>
+<rect x="65" y="477" width="420" height="48" rx="9" fill="#ffffff" stroke="#cbd8e2"/>
+<text x="82" y="507" font-size="17" fill="#314c63">What should it do?   Read aloud at home</text>
+<rect x="65" y="539" width="420" height="51" rx="9" fill="#008f88"/>
+<text x="275" y="571" text-anchor="middle" font-size="19" font-weight="bold">Send message</text>
+<text x="550" y="440" font-size="18" fill="#11283d">Status: Done</text>
+<text x="550" y="477" font-size="18" fill="#11283d">Last reply / read-aloud text</text>
+<text x="550" y="506" font-size="16" fill="#314c63">Read-aloud test.</text>
+<rect x="550" y="539" width="420" height="51" rx="9" fill="#dceae9"/>
+<text x="760" y="571" text-anchor="middle" font-size="18" fill="#006d68">Request photo</text>
+<text x="65" y="619" font-size="13" fill="#536d80">Illustration only. Confirm real speaker playback and phone photo delivery during handover.</text>
+<text x="40" y="663" font-size="13" fill="#adc1d2">English templates use script.jamiryo_send. Turkish templates are provided as a separate matching set.</text>
+</g></svg>
