@@ -110,6 +110,10 @@ leaving an existing profile's secret field blank preserves that home's saved
 secret. Selecting a different home selects its credentials as a unit.
 See [Home Assistant setup](../home-assistant/README.md).
 
+The robot home profile does not create a dashboard in HA. For remote messages,
+install the matching [helpers, script and dedicated dashboard](../home-assistant/README.md)
+once on that HA server; then choose a phone and run the speaker/photo checks.
+
 ## 5. Add and calibrate the servo
 
 Disconnect power before rewiring. Use the validated power arrangement from

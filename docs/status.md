@@ -1,6 +1,6 @@
 # Validation, limitations and roadmap
 
-Public snapshot: **1.2.9-public1**, prepared 27 October 2026.
+Public snapshot: **1.2.14-public1**, prepared 27 October 2026.
 
 ## What the labels mean
 
@@ -15,7 +15,7 @@ passed a complete hardware acceptance test.
 | Gemini voice, memory and HA controls/photo notifications | Implemented; previously exercised on the prototype |
 | Bounded head routines, conversation gaze and object search | Implemented; approximate movement and vision, requiring mounting calibration |
 | Paired A/B LAN OTA | Implemented; prior prototype updates confirmed; public fork is not deployed by this publication task |
-| HA remote message/read-aloud/photo dashboard | Experimental. Host protocol/template tests exist; final device-to-phone acceptance is pending |
+| HA remote message/read-aloud/photo dashboard | Prototype series 1.2.11-1.2.14 exercised question/reply delivery, audible read-aloud and photos; public fork is separately build/host tested |
 | Public source-only build and privacy checks | See the local validation record below and the actual GitHub Actions results |
 | Battery level/percentage | Not implemented |
 | Exact local “Jamiryo” wake word / deep low-power standby | Not implemented |
@@ -32,17 +32,18 @@ Local validation completed on 27 October 2026:
 - OTA package validation: **PASS** for image checksum/SHA-256, damaged image
   rejection, both app-slot sizes, preserved NVS offsets and shared model hashes.
 - Public-file audit: **PASS**. Matched secret values are never written to its output.
-- Host release/privacy/document-link/STL tests: **10 passed**.
+- Host release/privacy/document-link/STL tests: **14 passed**.
 - HA native-Jinja protocol/template groups: **7 passed**, with no network requests.
 
-The application is 2,409,840 bytes and fits both `0x2E0000` application slots.
+The application is 2,411,904 bytes and fits both `0x2E0000` application slots.
 The machine-readable record is [validation.json](validation.json). This is a
 build/host validation record, not a new device deployment. GitHub Actions is
 provided separately; consult the actual run results rather than treating the
 workflow definition as proof of a successful remote run.
 
-No device flash, new physical servo test, private room photo or actual home
-action was performed to prepare this public repository.
+No public-fork device flash, new physical servo test or actual home action was performed
+for this source refresh. Earlier prototype acceptance results are recorded separately;
+no private room photo, home screenshot, credential or user message is published.
 
 ## Practical limits
 
@@ -57,9 +58,17 @@ energy budget; battery runtime and supply peak capability require measurements.
 
 ## Potential next work
 
-- Finish HA remote-message, read-aloud, repeated-request and photo delivery tests.
+- Exercise the optional native package on a separate clean HA test server; current checks validate artifact consistency, not a fresh server installation.
 - Measure power/runtime and design validated battery-voltage sensing.
 - Train and evaluate a consented local wake-word model before claiming it works.
 - Improve English runtime/UI coverage and configurable character/voice settings.
 - Add dimensioned parametric CAD, assembly drawings and verified slicer profiles.
 - Add repeatable consented vision and acoustic acceptance procedures.
+
+## New-home installation artifacts
+
+The illustrated guide offers a UI method and an optional native package. English
+and Turkish sets use matching script IDs and mode labels. Host checks exercise
+those mappings and the allowlisted portable bundle. Saving a robot profile does
+not create HA helpers or dashboards. Package loading/restart and actual outside-
+home networking still need validation in the recipient installation.

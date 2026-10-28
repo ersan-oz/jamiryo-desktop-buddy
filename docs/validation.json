@@ -1,19 +1,21 @@
 {
-  "snapshot": "1.2.9-public1",
+  "snapshot": "1.2.14-public1",
   "date": "2026-10-27",
   "target": "esp32s3",
   "esp_idf": "6.0.1",
   "source_build": true,
   "package_validation": true,
-  "application_bytes": 2409840,
-  "application_sha256": "69ad859d3ae89364fd92bb78841391ab11d34ff08ed41ed9dd884ee1687e31b6",
-  "host_release_tests_passed": 10,
+  "application_bytes": 2411904,
+  "application_sha256": "f0c034d70e483f882772c1a5f73795e8e2935fbb14da84f3055698975fcd7ae4",
+  "host_release_tests_passed": 14,
   "ha_template_groups_passed": 7,
   "ha_test_network_requests": 0,
   "public_fork_flashed": false,
-  "remote_messaging_end_to_end": "pending",
+  "remote_messaging_end_to_end": "Prototype series 1.2.11-1.2.14 accepted; public fork not flashed",
   "github_ci": "See actual repository Actions runs",
   "enclosure_stl_parts": 3,
   "stl_metadata_headers_sanitized": true,
-  "stl_triangle_payloads_preserved": true
+  "stl_triangle_payloads_preserved": true,
+  "native_package_new_server_test": false,
+  "bilingual_setup_artifacts": true
 }

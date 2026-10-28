@@ -58,15 +58,26 @@ robot's setup page if more than one phone is available. The photo path uploads
 to authenticated HA media. Notification acceptance does not guarantee immediate
 phone delivery; remote image loading also needs working HA network access.
 
-An optional experimental HA dashboard can send a text question, read-aloud
-message or photo request from outside the home through your existing private
-HA access such as Tailscale. Set it up with [the HA guide](../home-assistant/README.md).
-It has not yet completed final device-to-phone acceptance testing.
+The optional native HA dashboard sends questions, read-aloud messages and photo
+requests through your existing private HA access, such as Tailscale. Follow the
+illustrated [new-home guide](../home-assistant/README.md), or the matching
+[Turkish templates](../home-assistant/tr/README.md). Robot setup does not install
+this dashboard automatically: each different HA server needs its own helpers,
+script and dedicated dashboard.
+
+Write a short draft, save the field, choose **Ask Jamiryo** or **Read aloud at
+home**, then press the single **Send message** button. **Request photo** is a
+separate shortcut. Wait for completion; failed requests do not replay themselves.
+If speech finished without a returned transcript, the panel labels its display
+as your requested text. Listen to the actual speaker during handover.
 
 ## Moving to another home
 
 Open setup, add or select a home profile, and save that home's Wi-Fi, Gemini
 and HA details. Each profile has independent credentials and phone selection.
+Repeat the [HA dashboard installation](../home-assistant/README.md) on a new HA
+server and test actual phone delivery. A home-profile switch does not copy the
+old server's menu or install Tailscale.
 Do not give a new owner your pairing registry, flash backup or old personal
 profiles. A complete ownership-transfer/reset workflow is not provided here;
 plan that separately and revoke credentials that should no longer be usable.

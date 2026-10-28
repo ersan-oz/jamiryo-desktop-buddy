@@ -92,7 +92,7 @@ targets and actions exposed to Assist. Only explicit requests should initiate
 home actions, photos or outgoing text notifications; camera/idle events are
 not authorization to control the house.
 
-The experimental remote panel commits one `J1:` JSON envelope to a fixed
+The optional remote panel commits one `J1:` JSON envelope to a fixed
 `input_text` helper. The robot polls it, validates its mode, length and age,
 then writes an acknowledgement to NVS **before** starting an action. Requests
 expire after two minutes. The last claimed request ID prevents routine polling
