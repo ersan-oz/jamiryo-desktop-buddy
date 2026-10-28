@@ -1,102 +1,170 @@
-# Home Assistant integration
+# Set up Jamiryo in a new home
 
-## Existing control and photo features
+**Saving a home profile on the robot does not install this Home Assistant
+dashboard.** Configure the robot, then install three helpers, one script and
+one dedicated dashboard. Repeat once for each different HA server.
 
-Save a complete home profile using [phone setup](../docs/getting-started.md).
-Enter your own HA base URL and long-lived access token. The current client uses
-trusted local HTTP; see [the privacy model](../docs/privacy.md). Create/manage a
-token in your HA user profile under its security/access-token settings. Never
-put a token into this repository, a screenshot or a public issue.
+![Two separate setup steps and the message panel](../docs/assets/home-assistant-setup.svg)
 
-Expose intended entities to Assist and use a supported conversation agent/language
-for the firmware's Turkish commands. The robot discovers entity names, rooms and
-states; it does not hardcode the prototype owner's light or phone. Controls are
-limited to explicit requests and the actions Assist reports as supported.
+Illustration with generic examples, not a live household screenshot. No HACS,
+MQTT broker or custom integration is required. This folder contains the English
+set. For Turkish labels use [the matching Turkish set](tr/README.md); do not mix
+their mode labels or script IDs. Public source snapshot: **1.2.14-public1**.
 
-For photo notifications, register your phone with the official HA Companion app
-and grant its notification permission. Choose that phone in Jamiryo setup if
-several services exist. The image is uploaded to authenticated local HA media
-under `jamiryo`, using a per-device latest filename. Delivery and media access
-outside your home depend on your existing HA/private-network configuration.
-No new public camera endpoint or router forwarding is required.
+## 1. Configure the robot's home profile
 
-## Experimental remote-message dashboard
+Prepare your home's 2.4 GHz Wi-Fi, Gemini API key, local HA base URL and HA
+long-lived access token. Create the token in your HA **user profile → Security →
+Long-lived access tokens**. Google keys come from [Google AI Studio](https://aistudio.google.com/api-keys).
+Keep both private; no YAML file in this folder needs credentials.
 
-This section is implemented but still awaiting final device-to-phone acceptance
-testing. It uses native HA helpers, a script and dashboard cards; no HACS/custom
-component is required. Back up your HA configuration before making your own changes.
+Say **“Ev kurulumunu aç.”** to open robot setup. Without a working saved network,
+the robot also attempts setup after about 30 seconds. Join its `Jamiryo-...`
+Wi-Fi using the password provided by its builder. Open the captive portal or
+**http://198.18.0.1/** while connected to that network.
 
-### 1. Create three helpers
+Save a home name, Wi-Fi details, Gemini key, HA URL and HA token. The current
+wizard is Turkish and requires a complete HA profile. Use a local HTTP base URL,
+such as `http://homeassistant.local:8123`; the robot client does not support an
+HTTPS/reverse-proxy base URL. After the robot restarts, return the phone to home
+Wi-Fi. [First setup](../docs/getting-started.md) explains flashing, setup passwords
+and the wizard labels. Model access/quotas depend on your Google project.
 
-In HA, open **Settings → Devices & services → Helpers**. Create:
+## 2. Create three helpers in Home Assistant
 
-| Type | Entity ID (exact) | Options |
-| --- | --- | --- |
-| Text | `input_text.jamiryo_message` | Minimum 0, maximum 140, plain text |
-| Text | `input_text.jamiryo_inbox` | Minimum 0, maximum 255, plain text |
-| Dropdown | `input_select.jamiryo_mode` | `Ask Jamiryo`, `Read aloud at home`, `Send photo` |
+Recommended UI method: **Settings → Devices & services → Helpers → Create helper**.
+Verify exact entity IDs, not just display names:
 
-Initialize both text helpers to an empty string once. A newly created helper may
-initially report `unknown`; do not use that as the message draft. Do not clear
-the inbox later while a request is pending. The robot distinguishes helper
-existence from its current value when deciding whether the bridge is configured.
+| Type | Suggested name | Required entity ID | Setting |
+| --- | --- | --- | --- |
+| Text | Jamiryo message | `input_text.jamiryo_message` | Minimum 0, maximum 140, plain text |
+| Text | Jamiryo inbox | `input_text.jamiryo_inbox` | Minimum 0, maximum 255, plain text |
+| Dropdown | Jamiryo mode | `input_select.jamiryo_mode` | The three exact options below |
 
-### 2. Add the send script
-
-Create a new script, open its YAML editor, and paste `jamiryo_send.yaml` from this
-directory. The file is JSON, which is valid YAML. Save it as **Send to Jamiryo**
-and ensure its entity ID is exactly `script.jamiryo_send`.
-
-### 3. Create a dedicated dashboard
-
-Create an empty dashboard with URL path **`jamiryo-mesaj`**. In its raw
-configuration editor paste `jamiryo_dashboard.yaml`. Its view path intentionally
-remains `sohbet` for compatibility with the firmware's notification click target;
-the displayed labels are English. Keep normal HA authentication enabled.
-
-Wait for `sensor.jamiryo_messenger` to appear and report a current heartbeat.
-The panel treats a heartbeat older than 45 seconds as offline. Enter a short
-message, leave the input so HA saves it, choose a mode and press **Send**.
-The separate **Send photo** button does not need a message.
-
-### Modes and limits
-
-- **Ask Jamiryo:** text question to the existing Gemini session. The actual
-  output transcript is published in the panel and a phone notification is attempted.
-- **Read aloud at home:** asks the voice to read the quoted message. Action tools
-  are disabled except expression changes. Actual wording/articulation remains
-  model output; it is not a deterministic offline TTS engine.
-- **Send photo:** direct fresh camera capture/HA upload/phone notification, without
-  Gemini. Some explicit Turkish photo-request phrases in ask mode also use this path.
-
-Messages are limited to 140 Unicode characters and the complete compact `J1:`
-envelope must fit HA's 255-character text state. Quotes/escaping can make a
-nominally short message too large. Requests expire after 120 seconds, with a
-small future-clock allowance. A durable last-claimed ID prevents routine replay;
-an uncertain action is not automatically retried after restart.
-
-The robot publishes processing state, last reply, error and photo link. The
-phone-notification error is separate from a successful panel reply. Ordinary
-room speech is not forwarded automatically. A person at home must explicitly
-ask, for example, “Telefonuma mesaj gönder: …” to initiate an outgoing message.
-
-HA helpers, recorder history, sensor attributes, media and backups can retain
-requests, responses and photos. Review your HA retention policy. Your existing
-Tailscale/private HA access can carry this panel remotely; this guide does not
-change your router, VPN or HA authentication.
-
-## Host checks
-
-```sh
-python scripts/ha_message_bundle.py
-python scripts/check_ha_messages.py
+```text
+Ask Jamiryo
+Read aloud at home
+Send photo
 ```
 
-Run these from the repository root. The template test checks native Jinja value
-handling, Unicode/emoji, modes, length rejection, offline/busy checks and pending
-request guards without contacting a home or sending any notification.
+Initialize both text helpers to an empty string once. If needed, use
+**Developer tools → Actions → YAML mode**:
 
-References: [HA scripts](https://www.home-assistant.io/integrations/script/),
-[input text](https://www.home-assistant.io/integrations/input_text/),
-[REST API](https://developers.home-assistant.io/docs/api/rest/),
-[Companion notifications](https://companion.home-assistant.io/docs/notifications/notifications-basic/).
+```yaml
+action: input_text.set_value
+target:
+  entity_id:
+    - input_text.jamiryo_message
+    - input_text.jamiryo_inbox
+data:
+  value: ""
+```
+
+The inbox is internal and absent from the form. Do not edit/clear it during normal
+use or while a request is pending. Experienced YAML users may instead use the
+[native package method](package-install.md) for steps 2 and 3. Choose one method.
+
+## 3. Add the send script
+
+Open **Settings → Automations & scenes → Scripts → Create script → Create new
+script**. In its menu choose **Edit in YAML**. Replace the empty script with all
+of [jamiryo_send.yaml](jamiryo_send.yaml), without a Markdown code fence.
+
+Save as **Send to Jamiryo**. Verify the entity ID is **`script.jamiryo_send`**.
+These files use JSON syntax, which is valid YAML. Do not paste the dashboard
+file into the script editor or put the script in `configuration.yaml`.
+
+## 4. Add the separate dashboard
+
+In **Settings → Dashboards**, create a new empty dashboard: title **Jamiryo**,
+URL path **`jamiryo-mesaj`**, shown in the sidebar. Open it, then choose
+**Edit dashboard → menu → Raw configuration editor**. Paste the complete
+[jamiryo_dashboard.yaml](jamiryo_dashboard.yaml), save, and leave editing mode.
+Do not replace your normal home dashboard.
+
+The view path remains **`sohbet`**: `/jamiryo-mesaj/sohbet`. Keep these URL paths
+in English installs too; notification click targets use them. The robot creates
+`sensor.jamiryo_messenger` itself; do not create that sensor as a helper.
+Wait for **Connected and ready**.
+
+## 5. Select the phone
+
+Register your phone with this same HA server in the official **HA Companion app**
+and enable notifications. In robot setup, use **Fotoğraflı bildirim → Telefonları
+bul → Bu telefona gönder** to select it. One discovered phone can be selected
+automatically; choose explicitly if several exist. Return to home Wi-Fi.
+Photos require authenticated local HA media and media-upload permission; the
+prototype uses an administrator HA token. Do not put that token in these files.
+
+For voice control of home devices, separately expose intended entities to
+**Assist**, with useful names and rooms. This dashboard does not expose all devices.
+
+## 6. Test before handing over
+
+| Check | Action | Actual success |
+| --- | --- | --- |
+| Text | Ask Jamiryo: `İki artı iki kaç eder?` → Send message | Relevant reply in panel and a phone notification |
+| Speaker | Read aloud at home: a short harmless test → Send message | Listen to the robot; it finishes without an error |
+| Photo | Request photo; no text needed | New notification arrives and its expanded image is visible |
+| Away from home | Open HA through your configured Tailscale/private access | Dashboard and authenticated media both load |
+
+Save the draft by pressing Enter/Done or leaving the field. **Send message** is
+the only send button for the draft; **Request photo** is a separate shortcut.
+On phones the status/reply may appear below the form. Template labels are English,
+while default robot speech and many firmware phrases remain Turkish.
+
+Read-aloud shows the actual transcript when returned. If audio finished without
+a transcript, your requested text is shown with a clear note. “Done” confirms
+software playback, not that someone heard every word or an independent transcript.
+
+## Troubleshooting and limits
+
+| Symptom | First check |
+| --- | --- |
+| Missing entity / unknown mode | Exact helper IDs, exact options, matching language set |
+| Send button fails | Exact script ID and the current complete dashboard file |
+| Offline | Robot power, selected home profile, local HA URL/token, same LAN |
+| Voice timeout / interrupted reading | Wait until ready and explicitly send again; avoid repeated taps |
+| No notification | Selected phone, Companion registration and Android notification permissions |
+| No image | Test on home Wi-Fi first; app/media access and HA upload permission |
+| Only works at home | Configure phone-to-HA private access and authenticated media access separately |
+
+Drafts allow 140 characters; the full JSON request must also fit 255 characters.
+Quotes/escaping can reduce usable length. Requests expire after two minutes;
+queue wait is bounded at 60 seconds and reply/playback at 90 seconds. Failed
+requests do not replay automatically after restart. A person in the room can
+explicitly say **“Telefonuma mesaj gönder: ...”** to reply to the selected phone.
+Ordinary room speech is not forwarded automatically.
+
+## Another house or another owner
+
+Each different HA server needs its own helpers/script/dashboard. Switching the
+robot's home profile selects Wi-Fi, Gemini and HA credentials together, but does
+not copy a dashboard or erase old profiles, shared notes or enrolled faces.
+Arrange a verified cleanup/revocation before ownership transfer. Do not share
+pairing registries, flash/NVS backups, credentials or private captures.
+
+## Files and portable bundle
+
+- [Send script](jamiryo_send.yaml) and [dashboard](jamiryo_dashboard.yaml): UI method.
+- [Native package](jamiryo_package.yaml): optional helpers + script, [instructions](package-install.md).
+- [Turkish templates and instructions](tr/README.md).
+
+Download the repository with **Code → Download ZIP**, or generate a small setup
+bundle containing both language sets and this illustration:
+
+```sh
+python scripts/ha_message_bundle.py --bundle dist/jamiryo-home-assistant-setup.zip
+```
+
+The bundle has no credentials. General firmware guide links refer to the full
+repository. Prototype tests on 27 October 2026 confirmed question/reply delivery,
+audible read-aloud and photos across prototype versions 1.2.11-1.2.14. The public
+fork has different neutral assets/persona and needs its own hardware acceptance.
+See [validation](../docs/status.md).
+
+Official references: [helpers](https://www.home-assistant.io/integrations/input_text/),
+[scripts](https://www.home-assistant.io/integrations/script/),
+[packages](https://www.home-assistant.io/docs/configuration/packages/),
+[dashboards](https://www.home-assistant.io/dashboards/dashboards/),
+[phone images](https://companion.home-assistant.io/docs/notifications/notification-attachments/).

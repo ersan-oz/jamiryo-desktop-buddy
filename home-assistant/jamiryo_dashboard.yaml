@@ -7,62 +7,77 @@
       "icon": "mdi:robot-happy-outline",
       "cards": [
         {
-          "type": "markdown",
-          "content": "# Jamiryo\nTalk to your desktop companion remotely.\n\nAsk a question, read a message aloud at home, or request a fresh camera photo."
-        },
-        {
-          "type": "entities",
-          "title": "Send a message",
-          "show_header_toggle": false,
-          "entities": [
+          "type": "vertical-stack",
+          "cards": [
             {
-              "entity": "input_text.jamiryo_message",
-              "name": "Your message",
-              "icon": "mdi:message-text-outline"
+              "type": "markdown",
+              "content": "# Jamiryo\nWrite a message, choose what to do, then press **Send message**.\n\n**Ask Jamiryo:** get an answer.\n\n**Read aloud at home:** play your text through the robot speaker."
             },
             {
-              "entity": "input_select.jamiryo_mode",
-              "name": "Action",
-              "icon": "mdi:format-list-bulleted"
+              "type": "entities",
+              "title": "Your message",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_text.jamiryo_message",
+                  "name": "Your message",
+                  "icon": "mdi:message-text-outline"
+                },
+                {
+                  "entity": "input_select.jamiryo_mode",
+                  "name": "What should it do?",
+                  "icon": "mdi:format-list-bulleted"
+                }
+              ]
             },
             {
-              "entity": "script.jamiryo_send",
-              "name": "Send to Jamiryo",
-              "action_name": "Send"
+              "type": "button",
+              "name": "Send message",
+              "show_icon": false,
+              "show_state": false,
+              "tap_action": {
+                "action": "perform-action",
+                "perform_action": "script.jamiryo_send"
+              }
             }
           ]
         },
         {
-          "type": "button",
-          "name": "Send photo",
-          "icon": "mdi:camera",
-          "show_state": false,
-          "tap_action": {
-            "action": "perform-action",
-            "perform_action": "script.jamiryo_send",
-            "data": {
-              "mode": "photo",
-              "message": ""
+          "type": "vertical-stack",
+          "cards": [
+            {
+              "type": "markdown",
+              "title": "Status",
+              "content": "{% set t = state_attr('sensor.jamiryo_messenger','last_seen') | float(0) %}\n{% set s = states('sensor.jamiryo_messenger') %}\n**Status:** {% if as_timestamp(now()) - t > 45 %}Offline or not ready yet.{% else %}{{ {'ready':'Connected and ready','processing':'Processing...','done':'Done','error':'Request failed'}.get(s,s) }}{% endif %}\n{% set error = state_attr('sensor.jamiryo_messenger','error') %}\n{% if error %}\n{{ {'queue_timeout':'The voice connection was not ready in time. Wait briefly, then send again.',\n'reply_timeout':'The voice reply did not finish. You can send again.',\n'playback_timeout':'Playback did not finish. You can send again.',\n'speech_interrupted':'Reading was interrupted. Send again if you want the complete message.',\n'connection_lost':'The voice connection was lost. Wait until ready, then send again.',\n'missing_audio':'No speech audio was produced. Send the message again.',\n'missing_reply_text':'No written reply was received. Try again when ready.',\n'previous_result_unconfirmed':'The robot restarted during the previous request. It will not replay it automatically.'}.get(error,'The request could not be completed. Try again when the robot is ready.') }}\n{% endif %}\n{% if state_attr('sensor.jamiryo_messenger','notification_error') %}Phone delivery could not be requested. The reply remains below.{% endif %}"
+            },
+            {
+              "type": "markdown",
+              "title": "Last reply / read-aloud text",
+              "content": "<p>{{ (state_attr('sensor.jamiryo_messenger','reply') or 'No reply yet.') | e | replace('\\n','<br>') }}</p>\n{% if state_attr('sensor.jamiryo_messenger','reply_source') == 'requested_text' %}Audio was played. No speech transcript was returned, so your requested text is shown.{% endif %}"
+            },
+            {
+              "type": "button",
+              "name": "Request photo",
+              "show_icon": false,
+              "show_state": false,
+              "tap_action": {
+                "action": "perform-action",
+                "perform_action": "script.jamiryo_send",
+                "data": {
+                  "mode": "photo",
+                  "message": ""
+                }
+              }
+            },
+            {
+              "type": "markdown",
+              "content": "{% set image = state_attr('sensor.jamiryo_messenger','image') %}{% if image %}[Open the latest photo]({{ image }}){% endif %}"
             }
-          }
+          ]
         },
         {
           "type": "markdown",
-          "title": "Connection and request",
-          "content": "{% set t = state_attr('sensor.jamiryo_messenger','last_seen') | float(0) %}\n{% set s = states('sensor.jamiryo_messenger') %}\n{% if as_timestamp(now()) - t > 45 %}\n**Status:** Offline or not ready yet.\n{% else %}\n**Status:** {{ {'ready':'Connected and ready','processing':'Processing…','done':'Done','error':'Request failed'}.get(s,s) }}\n{% endif %}\n{% if state_attr('sensor.jamiryo_messenger','error') %}\nError: `{{ state_attr('sensor.jamiryo_messenger','error') }}`\n{% endif %}\n{% if state_attr('sensor.jamiryo_messenger','notification_error') %}\nPhone notification failed: `{{ state_attr('sensor.jamiryo_messenger','notification_error') }}`. The reply is shown below.\n{% endif %}"
-        },
-        {
-          "type": "markdown",
-          "title": "Last reply",
-          "content": "<pre style=\"white-space: pre-wrap; overflow-wrap: anywhere;\">{{ (state_attr('sensor.jamiryo_messenger','reply') or 'No reply yet.') | e }}</pre>"
-        },
-        {
-          "type": "markdown",
-          "content": "{% set image = state_attr('sensor.jamiryo_messenger','image') %}{% if image %}[Open the latest photo]({{ image }}){% endif %}"
-        },
-        {
-          "type": "markdown",
-          "content": "Short messages only: up to 140 characters, subject to the 255-character JSON envelope limit. Wait while the robot replies. A person at home can explicitly ask **“Telefonuma mesaj gönder: …”** to send a phone reply. Ordinary room conversations are not forwarded automatically.\n\nPhotos go to the selected HA Companion phone. Your existing private HA access, such as Tailscale, can make this panel available away from home."
+          "content": "Up to 140 characters; JSON escaping can reduce the usable length. Wait for the current request to finish. A person at home can explicitly say **Telefonuma mesaj gönder: ...** to send a phone reply. Ordinary room speech is not forwarded.\n\nPhotos go to the phone selected in robot setup. Away from home, connect to Home Assistant through your existing private access such as Tailscale."
         }
       ]
     }
