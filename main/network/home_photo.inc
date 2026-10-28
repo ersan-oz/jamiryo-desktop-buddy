@@ -162,7 +162,6 @@ void send_photo(const Profile &profile, const Request &request, cJSON *result, c
     cJSON_AddStringToObject(payload, "message", "Fotoğrafı çektim, ellam.");
     auto *data = cJSON_AddObjectToObject(payload, "data"); cJSON_AddStringToObject(data, "image", image);
     cJSON_AddStringToObject(data, "clickAction", image); cJSON_AddStringToObject(data, "tag", "jamiryo_photo");
-    cJSON_AddStringToObject(data, "channel", "Jamiryo fotoğrafları");
     wire = cJSON_PrintUnformatted(payload); cJSON_Delete(payload);
     cJSON *reply = wire ? http(profile, path, wire, error) : nullptr; cJSON_free(wire);
     if (!reply) { if (!error) error = "out_of_memory"; return; }

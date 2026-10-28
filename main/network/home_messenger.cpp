@@ -15,8 +15,11 @@ struct Data {
     BuddyMessageRequest request;
     BuddyMessageResult result;
     Phase phase = Phase::Idle;
-    int64_t since = 0;
+    int64_t since = 0, finished_at = 0;
     unsigned accepted = 0, completed = 0, failures = 0;
+    unsigned empty_boundaries = 0;
+    char last_failure[48]{};
+    int64_t failure_at = 0;
 };
 Data *data = nullptr;
 SemaphoreHandle_t lock = nullptr;
@@ -77,6 +80,8 @@ bool photo_words(const char *input)
 void fail_locked(const char *reason)
 {
     std::snprintf(data->result.error, sizeof(data->result.error), "%s", reason);
+    std::snprintf(data->last_failure, sizeof(data->last_failure), "%s", reason);
+    data->failure_at = now_ms();
     data->phase = Phase::Failed; ++data->failures;
 }
 bool self_test()
@@ -103,13 +108,54 @@ bool self_test()
     auto *result = static_cast<BuddyMessageResult *>(heap_caps_calloc(1, sizeof(BuddyMessageResult), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (result) {
         std::strcpy(request->id, "20261026000123456789"); std::strcpy(request->text, "fixture"); request->mode = BuddyMessageMode::Say;
-        ok &= buddy_messenger_queue(*request) && !buddy_messenger_queue(*request) && buddy_messenger_take(*request)
+        ok &= !buddy_messenger_pending() && buddy_messenger_queue(*request) && buddy_messenger_pending()
+            && !buddy_messenger_queue(*request) && buddy_messenger_take(*request)
             && buddy_messenger_reading() && buddy_messenger_generating();
+        // An empty realtime boundary may arrive after the text prompt. It must
+        // neither fail the job nor close its pending response watchdog.
+        ok &= !buddy_messenger_complete() && buddy_messenger_generating()
+            && !buddy_messenger_result(*result, true);
         buddy_messenger_text("Şimdi "); buddy_messenger_text("hazır."); buddy_messenger_audio(); buddy_messenger_complete();
-        ok &= !buddy_messenger_result(*result, false) && buddy_messenger_result(*result, true)
+        ok &= buddy_messenger_pending() && !buddy_messenger_result(*result, false) && buddy_messenger_result(*result, true)
             && same(result->text, "Şimdi hazır.") && result->audio && !result->error[0];
         buddy_messenger_release();
+        ok &= !buddy_messenger_pending();
+        // A read-aloud job with only text is not a successful spoken delivery.
+        ok &= buddy_messenger_queue(*request) && buddy_messenger_take(*request);
+        buddy_messenger_text("Audio missing fixture"); buddy_messenger_complete();
+        ok &= buddy_messenger_result(*result, true) && same(result->error, "missing_audio");
+        buddy_messenger_release();
+        // Failure releases the floor only once the home worker has consumed it.
+        ok &= buddy_messenger_queue(*request) && buddy_messenger_take(*request);
+        buddy_messenger_fail("speech_interrupted");
+        ok &= buddy_messenger_pending() && buddy_messenger_result(*result, true)
+            && same(result->error, "speech_interrupted");
+        buddy_messenger_release(); ok &= !buddy_messenger_pending();
+        // Output transcription can trail the audio turn boundary.
+        ok &= buddy_messenger_queue(*request) && buddy_messenger_take(*request);
+        buddy_messenger_audio(); ok &= buddy_messenger_complete() && !buddy_messenger_result(*result, true);
+        buddy_messenger_text("Late transcript");
+        ok &= buddy_messenger_result(*result, true) && result->transcript && same(result->text, "Late transcript");
+        buddy_messenger_release();
+        // A spoken read-aloud can succeed without ASR; label the request-text fallback.
+        ok &= buddy_messenger_queue(*request) && buddy_messenger_take(*request);
+        buddy_messenger_audio(); ok &= buddy_messenger_complete();
+        data->finished_at = now_ms() - 1501;
+        ok &= buddy_messenger_result(*result, true) && result->audio && !result->transcript
+            && !result->error[0] && same(result->text, request->text);
+        buddy_messenger_release();
+        ok &= buddy_messenger_queue(*request);
+        data->since = now_ms() - 60001;
+        ok &= buddy_messenger_result(*result, true) && same(result->error, "queue_timeout");
+        buddy_messenger_release();
+        ok &= buddy_messenger_queue(*request) && buddy_messenger_take(*request);
+        buddy_messenger_text("Playback fixture"); buddy_messenger_audio(); buddy_messenger_complete();
+        data->since = now_ms() - 90001;
+        ok &= buddy_messenger_result(*result, false) && same(result->error, "playback_timeout");
+        buddy_messenger_release(); ok &= !buddy_messenger_pending();
         data->accepted = data->completed = data->failures = 0;
+        data->empty_boundaries = 0;
+        data->last_failure[0] = 0; data->failure_at = 0;
         std::memset(result, 0, sizeof(*result)); heap_caps_free(result);
     } else ok = false;
     std::memset(request, 0, sizeof(*request)); heap_caps_free(request); return ok;
@@ -162,6 +208,12 @@ bool buddy_messenger_generating()
     if (!data) return false;
     xSemaphoreTake(lock, portMAX_DELAY); bool value = data->phase == Phase::Active; xSemaphoreGive(lock); return value;
 }
+bool buddy_messenger_pending()
+{
+    if (!data || !lock) return false;
+    xSemaphoreTake(lock, portMAX_DELAY); const bool pending = data->phase != Phase::Idle;
+    xSemaphoreGive(lock); return pending;
+}
 bool buddy_messenger_reading()
 {
     if (!data) return false;
@@ -172,11 +224,12 @@ void buddy_messenger_text(const char *text)
 {
     if (!data || !text) return;
     xSemaphoreTake(lock, portMAX_DELAY);
-    if (data->phase == Phase::Active) {
+    if (data->phase == Phase::Active || data->phase == Phase::Finishing) {
         size_t used = std::strlen(data->result.text), size = std::strlen(text), take = std::min(size, sizeof(data->result.text) - used - 1);
         while (take && (static_cast<unsigned char>(text[take]) & 0xc0) == 0x80) --take;
         std::memcpy(data->result.text + used, text, take); data->result.text[used + take] = 0;
         data->result.truncated |= take != size;
+        data->result.transcript |= take > 0;
     }
     xSemaphoreGive(lock);
 }
@@ -185,15 +238,21 @@ void buddy_messenger_audio()
     if (!data) return;
     xSemaphoreTake(lock, portMAX_DELAY); if (data->phase == Phase::Active) data->result.audio = true; xSemaphoreGive(lock);
 }
-void buddy_messenger_complete()
+bool buddy_messenger_complete()
 {
-    if (!data) return;
+    if (!data) return true;
     xSemaphoreTake(lock, portMAX_DELAY);
+    bool completed = true;
     if (data->phase == Phase::Active) {
-        data->phase = Phase::Finishing;
-        if (!data->result.text[0]) fail_locked("missing_reply_text");
+        if (!data->result.text[0] && !data->result.audio) {
+            ++data->empty_boundaries; completed = false;
+        } else {
+            data->phase = Phase::Finishing;
+            data->finished_at = now_ms();
+            if (data->request.mode == BuddyMessageMode::Say && !data->result.audio) fail_locked("missing_audio");
+        }
     }
-    xSemaphoreGive(lock);
+    xSemaphoreGive(lock); return completed;
 }
 void buddy_messenger_fail(const char *reason)
 {
@@ -204,9 +263,21 @@ bool buddy_messenger_result(BuddyMessageResult &r, bool output_idle)
 {
     if (!data) return false;
     xSemaphoreTake(lock, portMAX_DELAY);
-    if ((data->phase == Phase::Queued && now_ms() - data->since > 30000)
-        || ((data->phase == Phase::Active || data->phase == Phase::Finishing) && now_ms() - data->since > 90000)) fail_locked("reply_timeout");
-    bool done = data->phase == Phase::Failed || (data->phase == Phase::Finishing && output_idle);
+    // A queued job may span a 20s stalled-voice recovery plus a 20s reconnect.
+    // It keeps its identity; nothing is replayed after a partially spoken reply.
+    if (data->phase == Phase::Queued && now_ms() - data->since > 60000) fail_locked("queue_timeout");
+    else if ((data->phase == Phase::Active || data->phase == Phase::Finishing) && now_ms() - data->since > 90000)
+        fail_locked(data->phase == Phase::Finishing ? "playback_timeout" : "reply_timeout");
+    bool done = data->phase == Phase::Failed;
+    if (data->phase == Phase::Finishing && output_idle
+        && (data->result.text[0] || now_ms() - data->finished_at > 1500)) {
+        if (!data->result.text[0]) {
+            if (data->request.mode == BuddyMessageMode::Say && data->result.audio)
+                std::snprintf(data->result.text, sizeof(data->result.text), "%s", data->request.text);
+            else fail_locked("missing_reply_text");
+        }
+        done = true;
+    }
     if (done) r = data->result;
     xSemaphoreGive(lock); return done;
 }
@@ -224,5 +295,9 @@ BuddyMessengerSnapshot buddy_messenger_snapshot()
     xSemaphoreTake(lock, portMAX_DELAY);
     const char *names[] = {"idle", "queued", "active", "finishing", "failed"}; r.phase = names[unsigned(data->phase)];
     r.accepted = data->accepted; r.completed = data->completed; r.failures = data->failures;
+    r.empty_boundaries = data->empty_boundaries;
+    r.phase_age_ms = data->phase == Phase::Idle ? 0 : now_ms() - data->since;
+    r.failure_age_ms = data->failure_at ? now_ms() - data->failure_at : -1;
+    std::snprintf(r.last_failure, sizeof(r.last_failure), "%s", data->last_failure);
     xSemaphoreGive(lock); return r;
 }

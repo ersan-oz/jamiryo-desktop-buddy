@@ -363,7 +363,7 @@ cJSON *setup_message()
     }
     return root;
 }
-bool request_reply(const char *text, bool user_activity = true)
+bool request_reply(const char *text, bool user_activity = true, bool close_input = true)
 {
     autonomous_turn.store(!user_activity);
     if (user_activity) buddy_idle_activity();
@@ -373,7 +373,8 @@ bool request_reply(const char *text, bool user_activity = true)
     cJSON *parts = cJSON_AddArrayToObject(turn, "parts"), *part = cJSON_CreateObject();
     cJSON_AddItemToArray(parts, part); cJSON_AddStringToObject(part, "text", text);
     cJSON_AddBoolToObject(content, "turnComplete", true);
-    response_open.store(true); last_audio.store(now_ms()); end_input.store(true);
+    response_open.store(true); last_audio.store(now_ms());
+    if (close_input) end_input.store(true);
     response_timer.store(now_ms());
     turn_audio_received.store(false); generation_complete.store(false);
     if (!send_object(root)) { fail("SEND_ERROR"); return false; }
@@ -641,6 +642,7 @@ void receive_message(const char *message)
             || cJSON_IsTrue(field(server, "generationComplete")) || cJSON_IsTrue(field(server, "turnComplete")))
             speech_reply_since.store(0);
         if (cJSON_IsTrue(field(server, "interrupted"))) {
+            buddy_messenger_fail("speech_interrupted");
             discard_output.store(true); response_open.store(false); generation_complete.store(true); resampler.reset();
         } else {
             const cJSON *parts = field(field(server, "modelTurn"), "parts"), *part;
@@ -662,8 +664,15 @@ void receive_message(const char *message)
         }
         if (cJSON_IsTrue(field(server, "turnComplete"))) {
             if (!autonomous_turn.load()) last_user_reply.store(now_ms());
-            response_open.store(false); resampler.reset(); ESP_LOGI(tag, "GEMINI_TURN: COMPLETE");
-            buddy_messenger_complete();
+            if (buddy_messenger_complete()) {
+                response_open.store(false); resampler.reset(); ESP_LOGI(tag, "GEMINI_TURN: COMPLETE");
+            } else {
+                // The old microphone stream can finish after clientContent was
+                // sent. With no dashboard output yet, keep waiting under the
+                // existing 20s response watchdog; never mark it read or replay it.
+                generation_complete.store(false);
+                ESP_LOGI(tag, "HOME_MESSAGE: ignored empty realtime turn boundary");
+            }
         }
     }
     if (field(root, "toolCall")) {
@@ -914,6 +923,15 @@ void network_task(void *)
             set_state("SESSION_RENEWAL"); continue;
         }
         if (session_idle && home_message && buddy_messenger_take(*home_message)) {
+            // End the previous realtime audio stream BEFORE clientContent.
+            // Sending audioStreamEnd after a text prompt interleaves two turns.
+            flush_input();
+            const bool ending = end_input.exchange(false);
+            if (stream_active || ending) {
+                const bool ended = send_text("{\"realtimeInput\":{\"audioStreamEnd\":true}}");
+                stream_active = false;
+                if (!ended) { fail("INPUT_END_ERROR"); std::memset(home_message, 0, sizeof(*home_message)); continue; }
+            }
             auto *payload = cJSON_CreateObject();
             cJSON_AddStringToObject(payload, "mode", home_message->mode == BuddyMessageMode::Say ? "say" : "ask");
             cJSON_AddStringToObject(payload, "text", home_message->text);
@@ -925,7 +943,7 @@ void network_task(void *)
             char *prompt = size ? static_cast<char *>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)) : nullptr;
             if (prompt) {
                 std::snprintf(prompt, size, "%s%s", instruction, json);
-                if (!request_reply(prompt)) buddy_messenger_fail("send_failed");
+                if (!request_reply(prompt, true, false)) buddy_messenger_fail("send_failed");
                 std::memset(prompt, 0, size); heap_caps_free(prompt);
             } else buddy_messenger_fail("out_of_memory");
             if (json) { std::memset(json, 0, std::strlen(json)); cJSON_free(json); }
@@ -1163,7 +1181,7 @@ BuddyAiSnapshot buddy_ai_snapshot()
         socket_failure_free.load(), socket_failure_largest.load(), socket_error.load(), socket_stage.load(),
         confirmed_inputs.load(), ignored_vad_turns.load()};
 }
-bool buddy_ai_input_allowed() { return !buddy_ota_busy() && buddy_ai_ready() && !buddy_ai_output_pending() && !buddy_messenger_generating(); }
+bool buddy_ai_input_allowed() { return !buddy_ota_busy() && buddy_ai_ready() && !buddy_ai_output_pending() && !buddy_messenger_pending(); }
 bool buddy_ai_push_microphone(const int16_t *samples, size_t count)
 {
     if (!buddy_ai_input_allowed()) return false;
@@ -1180,6 +1198,8 @@ bool buddy_ai_push_microphone(const int16_t *samples, size_t count)
 }
 void buddy_ai_note_speech(bool new_utterance)
 {
+    // A microphone block may have passed its earlier gate just before queueing.
+    if (!buddy_ai_input_allowed()) return;
     if (new_utterance) {
         speech_confirmed.store(false); speech_reply_since.store(0);
         autonomous_turn.store(false);

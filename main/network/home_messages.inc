@@ -10,6 +10,7 @@ struct HomeMessages {
     BuddyMessageResult result;
     char slot[16]{}, current_id[33]{}, reply[2049]{}, error[48]{}, image[160]{};
     const char *state = "ready";
+    const char *reply_source = "status";
     int64_t poll_at = 0, publish_at = 0, server_ms = 0;
     double server_now = 0;
     bool bound = false, ack_ok = false, active = false, configured = false;
@@ -60,7 +61,6 @@ bool message_notify(const Profile &profile, const char *words, const char *&erro
     auto *payload = cJSON_CreateObject(); cJSON_AddStringToObject(payload, "title", "Jamiryo");
     cJSON_AddStringToObject(payload, "message", words);
     auto *data = cJSON_AddObjectToObject(payload, "data");
-    cJSON_AddStringToObject(data, "channel", "Jamiryo mesajları");
     cJSON_AddStringToObject(data, "clickAction", "/jamiryo-mesaj/sohbet");
     char *wire = cJSON_PrintUnformatted(payload); cJSON_Delete(payload);
     auto *response = wire ? http(profile, path, wire, error) : nullptr;
@@ -79,6 +79,7 @@ bool message_publish(const char *notification_error = nullptr)
     cJSON_AddStringToObject(attrs, "friendly_name", "Jamiryo mesajlaşma");
     cJSON_AddNumberToObject(attrs, "protocol", 1); cJSON_AddNumberToObject(attrs, "last_seen", m.server_now);
     cJSON_AddStringToObject(attrs, "request_id", m.current_id); cJSON_AddStringToObject(attrs, "reply", m.reply);
+    cJSON_AddStringToObject(attrs, "reply_source", m.reply_source);
     cJSON_AddStringToObject(attrs, "error", m.error); cJSON_AddStringToObject(attrs, "image", m.image);
     cJSON_AddStringToObject(attrs, "notification_error", notification_error ? notification_error : "");
     cJSON_AddStringToObject(attrs, "firmware", esp_app_get_description()->version);
@@ -91,6 +92,7 @@ bool message_publish(const char *notification_error = nullptr)
 void message_done(const char *error, const char *reply, const char *image = "", bool notify = false)
 {
     auto &m = *messages; m.active = false; m.state = error ? "error" : "done";
+    if (error) m.reply_source = "status";
     std::snprintf(m.error, sizeof(m.error), "%s", error ? error : "");
     std::snprintf(m.reply, sizeof(m.reply), "%s", reply ? reply : "");
     std::snprintf(m.image, sizeof(m.image), "%s", image);
@@ -106,6 +108,7 @@ void message_tick()
     auto &m = *messages;
     if (m.active) {
         if (buddy_messenger_result(m.result, !buddy_ai_output_pending() && !buddy_audio_busy())) {
+            m.reply_source = m.result.transcript ? "model_transcript" : "requested_text";
             message_done(m.result.error[0] ? m.result.error : nullptr, m.result.text, "", true);
             std::memset(&m.result, 0, sizeof(m.result)); buddy_messenger_release();
         } else if (now_ms() >= m.publish_at) message_publish();
@@ -149,6 +152,7 @@ void message_tick()
     std::strcpy(m.ack.name, m.home.name); std::strcpy(m.ack.url, m.home.url);
     std::strcpy(m.ack.id, m.request.id); m.ack.phase = 1;
     std::strcpy(m.current_id, m.request.id); m.error[0] = m.reply[0] = m.image[0] = 0; m.state = "processing";
+    m.reply_source = "status";
     if (!message_ack(true)) { m.ack_ok = false; m.state = "error"; std::strcpy(m.error, "claim_not_saved"); message_publish(); return; }
     if (!message_publish()) { message_done("status_unreachable", "İstek başlatılamadı; yeniden gönder."); return; }
     if (m.request.mode == BuddyMessageMode::Photo) {

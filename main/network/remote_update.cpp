@@ -15,6 +15,7 @@
 #include "esp_ota_ops.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -121,6 +122,8 @@ esp_err_t status(httpd_req_t *request)
     const bool ready = running && esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_VALID;
     cJSON_AddBoolToObject(root, "ready", ready); cJSON_AddBoolToObject(root, "busy", buddy_ota_busy());
     cJSON_AddStringToObject(root, "slot", running ? running->label : "unknown");
+    cJSON_AddNumberToObject(root, "uptime_ms", now_ms());
+    cJSON_AddNumberToObject(root, "reset_reason", esp_reset_reason());
     const auto head = buddy_head_snapshot(); auto *motor = cJSON_AddObjectToObject(root, "head");
     cJSON_AddBoolToObject(motor, "available", head.available); cJSON_AddBoolToObject(motor, "moving", head.moving);
     cJSON_AddBoolToObject(motor, "manual_active", head.manual); cJSON_AddStringToObject(motor, "mode", head.mode);
@@ -190,10 +193,15 @@ esp_err_t status(httpd_req_t *request)
     cJSON_AddBoolToObject(homes, "selftest_pass", home.selftest);
     cJSON_AddBoolToObject(homes, "gemini_configured", home.gemini_configured);
     cJSON_AddNumberToObject(homes, "schema", home.schema); cJSON_AddNumberToObject(homes, "count", home.profiles);
+    cJSON_AddNumberToObject(homes, "worker_stack_min_bytes", home.worker_stack_min_bytes);
     const auto messages = buddy_messenger_snapshot(); auto *messenger = cJSON_AddObjectToObject(root, "messenger");
     cJSON_AddBoolToObject(messenger, "available", messages.available); cJSON_AddBoolToObject(messenger, "selftest_pass", messages.selftest);
     cJSON_AddStringToObject(messenger, "phase", messages.phase); cJSON_AddNumberToObject(messenger, "accepted", messages.accepted);
     cJSON_AddNumberToObject(messenger, "completed", messages.completed); cJSON_AddNumberToObject(messenger, "failures", messages.failures);
+    cJSON_AddNumberToObject(messenger, "phase_age_ms", messages.phase_age_ms);
+    cJSON_AddNumberToObject(messenger, "failure_age_ms", messages.failure_age_ms);
+    cJSON_AddStringToObject(messenger, "last_failure", messages.last_failure);
+    cJSON_AddNumberToObject(messenger, "empty_boundaries", messages.empty_boundaries);
     const auto ai = buddy_ai_snapshot(); auto *chat = cJSON_AddObjectToObject(root, "conversation");
     cJSON_AddBoolToObject(chat, "ready", ai.ready);
     cJSON_AddBoolToObject(chat, "guard_active", ai.conversation_guard);

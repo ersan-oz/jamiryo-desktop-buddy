@@ -60,6 +60,7 @@ struct Body { char *data = nullptr; size_t used = 0; bool overflow = false; char
 Database *database = nullptr;
 SemaphoreHandle_t mutex = nullptr;
 QueueHandle_t requests = nullptr;
+TaskHandle_t worker_task = nullptr;
 BuddyMemoryReply reply_sink = nullptr;
 std::atomic<unsigned> epoch{0}, reads{0}, controls{0}, errors{0};
 std::atomic<unsigned> redirects{0}, setup_pages{0};
@@ -358,7 +359,10 @@ bool conversation_result(const cJSON *root, cJSON *result)
     cJSON_AddBoolToObject(result, "needs_followup", cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "continue_conversation")));
     return true;
 }
-cJSON *execute(const Request &request)
+// Do not reserve this command path's large profile/catalog locals in worker's
+// frame. Its other branch calls message_tick -> send_photo -> HTTP: inlining
+// execute previously left only 400 bytes of the 9216-byte stack for HTTP internals.
+__attribute__((noinline)) cJSON *execute(const Request &request)
 {
     auto *result = cJSON_CreateObject(); cJSON_AddBoolToObject(result, "applied", false);
     if (request.action == Action::PortalTest) {
@@ -894,11 +898,10 @@ bool buddy_home_start(BuddyMemoryReply reply, const char *legacy_key)
     esp_ota_img_states_t boot_state;
     const bool verifying_update = esp_ota_get_state_partition(esp_ota_get_running_partition(), &boot_state) == ESP_OK
         && boot_state == ESP_OTA_IMG_PENDING_VERIFY;
-    if (verifying_update) {
-        // Let initial TLS setup release its temporary buffers before allocating
-        // the AP/HTTP server. The portal is still available after the OTA reboot.
-        setup_retry_at = now_ms() + 15000;
-    }
+    // A LAN update already has a working home profile. Do not automatically
+    // start the 12 KiB setup HTTP task on its verification boot: it can consume
+    // the contiguous internal RAM needed by the paired OTA server. Explicit
+    // setup requests and the disconnected-Wi-Fi fallback still open the portal.
     reply_sink = reply;
     database = static_cast<Database *>(heap_caps_calloc(1, sizeof(Database), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     mutex = xSemaphoreCreateMutex(); requests = xQueueCreate(4, sizeof(Request));
@@ -932,7 +935,7 @@ bool buddy_home_start(BuddyMemoryReply reply, const char *legacy_key)
     } else storage_ready = false;
     esp_log_level_set("HTTP_CLIENT", ESP_LOG_NONE);
     const bool ok = self_test(); ESP_LOGI(tag, "HOME_SELFTEST: %s (request bounds/HA results/profile keys/migration; credentials withheld)", ok ? "PASS" : "FAIL");
-    return ok && xTaskCreate(worker, "buddy_home", 9216, nullptr, 2, nullptr) == pdPASS;
+    return ok && xTaskCreate(worker, "buddy_home", 9216, nullptr, 2, &worker_task) == pdPASS;
 }
 void buddy_home_apply_configuration(char *ssid, size_t ssid_size, char *password, size_t password_size, char *key, size_t key_size)
 {
@@ -949,7 +952,8 @@ void buddy_home_apply_configuration(char *ssid, size_t ssid_size, char *password
 }
 BuddyHomeSnapshot buddy_home_snapshot()
 {
-    BuddyHomeSnapshot result{storage_ready, profiles_selftest, false, 3, 0};
+    BuddyHomeSnapshot result{storage_ready, profiles_selftest, false, 3, 0,
+        worker_task ? unsigned(uxTaskGetStackHighWaterMark(worker_task)) : 0};
     if (!mutex || !database) return result;
     xSemaphoreTake(mutex, portMAX_DELAY); result.profiles = database->count;
     if (storage_ready && database->count && database->active < database->count)
