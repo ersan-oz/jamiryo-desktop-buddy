@@ -1,0 +1,87 @@
+{
+  "title": "Jamiryo",
+  "views": [
+    {
+      "title": "Sohbet",
+      "path": "sohbet",
+      "icon": "mdi:robot-happy-outline",
+      "cards": [
+        {
+          "type": "vertical-stack",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "# Jamiryo\nMetnini yaz, ne yapacağını seç ve **Mesajı gönder** düğmesine bas.\n\n**Jamiryo’ya sor:** Cevap verir.\n\n**Evde sesli okut:** Yazdığın metni evde hoparlörden okur."
+            },
+            {
+              "type": "entities",
+              "title": "Mesajın",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_text.jamiryo_message",
+                  "name": "Mesajın",
+                  "icon": "mdi:message-text-outline"
+                },
+                {
+                  "entity": "input_select.jamiryo_mode",
+                  "name": "Ne yapsın?",
+                  "icon": "mdi:format-list-bulleted"
+                }
+              ]
+            },
+            {
+              "type": "button",
+              "name": "Mesajı gönder",
+              "icon": "mdi:send",
+              "show_icon": false,
+              "show_state": false,
+              "tap_action": {
+                "action": "perform-action",
+                "perform_action": "script.jamiryo_gonder"
+              }
+            }
+          ]
+        },
+        {
+          "type": "vertical-stack",
+          "cards": [
+            {
+              "type": "markdown",
+              "title": "Durum",
+              "content": "{% set t = state_attr('sensor.jamiryo_messenger','last_seen') | float(0) %}\n{% set s = states('sensor.jamiryo_messenger') %}\n{% if as_timestamp(now()) - t > 45 %}\n**Durum:** Çevrimdışı veya henüz hazır değil.\n{% else %}\n**Durum:** {{ {'ready':'Bağlı ve hazır','processing':'İşleniyor…','done':'Tamamlandı','error':'İşlem tamamlanamadı'}.get(s,s) }}\n{% endif %}\n{% if state_attr('sensor.jamiryo_messenger','error') %}\n{% set error = state_attr('sensor.jamiryo_messenger','error') %}\n{{ {'queue_timeout':'Ses bağlantısı zamanında hazır olmadı. Biraz bekleyip mesajı yeniden gönder.',\n    'reply_timeout':'Sesli yanıt tamamlanamadı. Mesajı yeniden gönderebilirsin.',\n    'playback_timeout':'Hoparlörde oynatma tamamlanamadı. Mesajı yeniden gönderebilirsin.',\n    'speech_interrupted':'Sesli okuma yarıda kesildi. Tamamını okutmak için yeniden gönder.',\n    'connection_lost':'Ses bağlantısı koptu. Bağlantı hazır olunca yeniden gönder.',\n    'missing_audio':'Konuşma sesi üretilemedi. Mesajı yeniden gönder.',\n    'missing_reply_text':'Yanıt alınamadı. Mesajı yeniden gönder.',\n    'previous_result_unconfirmed':'Önceki işlem sırasında robot yeniden başladı. Mesaj kendiliğinden tekrarlanmaz; gerekiyorsa yeniden gönder.'}.get(error,'İşlem tamamlanamadı. Robot hazır olduğunda yeniden dene.') }}\n{% endif %}\n{% if state_attr('sensor.jamiryo_messenger','notification_error') %}\nTelefon bildirimi gönderilemedi: `{{ state_attr('sensor.jamiryo_messenger','notification_error') }}`. Yanıt aşağıdadır.\n{% endif %}"
+            },
+            {
+              "type": "markdown",
+              "title": "Son cevap / okunan metin",
+              "content": "<p>{{ (state_attr('sensor.jamiryo_messenger','reply') or 'Henüz bir cevap yok.') | e | replace('\\n','<br>') }}</p>\n{% if state_attr('sensor.jamiryo_messenger','reply_source') == 'requested_text' %}Ses oynatıldı. Konuşma dökümü alınamadığı için gönderdiğin metin gösteriliyor.{% endif %}"
+            },
+            {
+              "type": "button",
+              "name": "Fotoğraf iste",
+              "icon": "mdi:camera",
+              "show_icon": false,
+              "show_state": false,
+              "tap_action": {
+                "action": "perform-action",
+                "perform_action": "script.jamiryo_gonder",
+                "data": {
+                  "mode": "photo",
+                  "message": ""
+                }
+              }
+            },
+            {
+              "type": "markdown",
+              "content": "{% set image = state_attr('sensor.jamiryo_messenger','image') %}{% if image %}[Son fotoğrafı aç]({{ image }}){% endif %}"
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "Kısa mesajlar için: en fazla 140 karakter. Robot cevap verirken bekle. Evdeki kişi yanıt göndermek için **“Telefonuma mesaj gönder: …”** diyebilir. Normal oda konuşmaları telefona otomatik aktarılmaz.\n\nFotoğraf, seçili telefonuna Home Assistant bildirimiyle gönderilir. Tailscale açıkken bu paneli ev dışında da kullanabilirsin."
+        }
+      ]
+    }
+  ]
+}
