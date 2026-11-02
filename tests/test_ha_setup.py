@@ -63,7 +63,7 @@ class HomeSetupTests(unittest.TestCase):
             path=Path(tmp)/'setup.zip'
             subprocess.run([sys.executable,str(ROOT/'scripts/ha_message_bundle.py'),'--bundle',str(path)],check=True,capture_output=True)
             with zipfile.ZipFile(path) as z:
-                self.assertEqual(len(z.namelist()),10)
+                self.assertEqual(len(z.namelist()),12)
                 self.assertTrue(all(not n.startswith('/') and '..' not in Path(n).parts for n in z.namelist()))
                 self.assertFalse(any(n.endswith(('.dpapi','.bin','.pdf','.log')) for n in z.namelist()))
                 text=z.read('home-assistant/README.md').decode('utf-8')
