@@ -266,6 +266,40 @@ TR_DASHBOARD = {'title': 'Jamiryo',
                                   'Fotoğraf, seçili telefonuna Home Assistant bildirimiyle gönderilir. Tailscale '
                                   'açıkken bu paneli ev dışında da kullanabilirsin.'}]}]}
 
+def add_head_controls(script, dashboard, script_id, labels):
+    """Upgrade both languages without changing the three draft dropdown modes."""
+    script['fields']['mode']['selector']['select']['options'].append('head')
+    steps = script['sequence']
+    steps[3]['if'][0]['value_template'] = steps[3]['if'][0]['value_template'].replace(
+        '< 120', "< (15 if previous.get('mode') == 'head' else 120)")
+    steps[4]['if'][0]['value_template'] = (
+        "{{ send_mode not in ['ask','say','photo','head'] or "
+        "(send_mode not in ['photo','head'] and not (send_text[2:] | trim)) or "
+        "(send_mode == 'head' and send_text[2:] not in ['left','center','right']) }}")
+    steps.insert(5, stop_if(
+        "{{ send_mode == 'head' and (state_attr('sensor.jamiryo_messenger','head_controls') != true or "
+        "state_attr('sensor.jamiryo_messenger','head_available') != true) }}", labels[3]))
+    row = {'type':'horizontal-stack','cards':[
+        {'type':'button','name':name,'icon':icon,'show_state':False,
+         'tap_action':{'action':'perform-action','perform_action':'script.'+script_id,
+                       'data':{'mode':'head','message':direction}}}
+        for name, icon, direction in zip(labels[:3],
+            ['mdi:arrow-left-bold','mdi:crosshairs','mdi:arrow-right-bold'], ['left','center','right'])]}
+    for card in dashboard['views'][0]['cards']:
+        children = card.get('cards', [])
+        for i, child in enumerate(children):
+            if child.get('tap_action',{}).get('data',{}).get('mode') == 'photo':
+                children.insert(i+1,row)
+                return row
+    raise ValueError('Photo shortcut not found; do not insert controls in an unknown layout.')
+
+
+HEAD_BUTTONS = add_head_controls(SCRIPT,DASHBOARD,'jamiryo_send',
+    ['Left','Center','Right','Head controls need firmware 1.2.17 or newer and an available servo.'])
+TR_HEAD_BUTTONS = add_head_controls(TR_SCRIPT,TR_DASHBOARD,'jamiryo_gonder',
+    ['Sol','Ortala','Sağ','Yön tuşları için 1.2.17 veya yeni yazılım ve kullanılabilir servo gerekir.'])
+
+
 def package(script, modes, script_id):
     # Native HA package, optional alternative to creating helpers in the UI.
     return {'input_text': {
@@ -286,14 +320,15 @@ def main():
          {'Jamiryo’ya sor':'ask','Evde sesli okut':'say','Fotoğraf gönder':'photo'}, 'jamiryo_gonder')]:
         folder.mkdir(parents=True, exist_ok=True)
         for name, value in [('jamiryo_send.yaml',script),('jamiryo_dashboard.yaml',dashboard),
+                            ('jamiryo_head_buttons.yaml', HEAD_BUTTONS if sid == 'jamiryo_send' else TR_HEAD_BUTTONS),
                             ('jamiryo_package.yaml',package(script,modes,sid))]:
             (folder/name).write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     if args.bundle:
         args.bundle.parent.mkdir(parents=True,exist_ok=True)
         with zipfile.ZipFile(args.bundle,'w',zipfile.ZIP_DEFLATED) as z:
-            allowed = ['README.md','package-install.md','jamiryo_send.yaml','jamiryo_dashboard.yaml',
+            allowed = ['README.md','package-install.md','jamiryo_send.yaml','jamiryo_dashboard.yaml','jamiryo_head_buttons.yaml',
                        'jamiryo_package.yaml','tr/README.md','tr/jamiryo_send.yaml',
-                       'tr/jamiryo_dashboard.yaml','tr/jamiryo_package.yaml']
+                       'tr/jamiryo_dashboard.yaml','tr/jamiryo_package.yaml','tr/jamiryo_head_buttons.yaml']
             included = {'home-assistant/'+name for name in allowed}
             included.add('docs/assets/home-assistant-setup.svg')
             for name in allowed:
