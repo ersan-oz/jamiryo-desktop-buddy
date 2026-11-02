@@ -1,6 +1,7 @@
 #include "camera.h"
 #include "image_rotation.h"
 #include "scene_change.h"
+#include "motion_target.h"
 #include "faces.h"
 #include "display/eyes.h"
 #include "buddy.h"
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cinttypes>
+#include <new>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "esp_camera.h"
@@ -43,6 +45,14 @@ QueueHandle_t photo_requests = nullptr, photo_results = nullptr;
 SemaphoreHandle_t photo_lock = nullptr;
 struct PhotoResult { unsigned ticket = 0; BuddyVisionFrame frame{}; };
 uint8_t *jpeg_buffer = nullptr;
+BuddyMotionTarget *motion_target = nullptr;
+std::atomic<bool> motion_selftest{false}, motion_available{false};
+std::atomic<bool> motion_sampling_active{false};
+std::atomic<unsigned> motion_frames{0}, motion_targets{0}, motion_broad{0}, motion_resets{0};
+std::atomic<unsigned> motion_candidates{0}, motion_changed{0}, motion_region{0}, motion_threshold{0}, motion_gap{0};
+constexpr int64_t motion_interval_ms = 200;
+std::atomic<int> motion_x{0};
+std::atomic<int64_t> motion_seen_at{0};
 struct SearchJob { unsigned id, view; };
 QueueHandle_t search_jobs = nullptr, search_results = nullptr;
 std::atomic<unsigned> search_id{0};
@@ -172,20 +182,39 @@ BuddySceneChange::Grid grid_from(const camera_fb_t &frame)
     }
     return grid;
 }
+bool motion_frame_allowed()
+{
+    const auto imu = buddy_motion_snapshot();
+    return buddy_head_follow_scanning() && !buddy_display_snapshot().pickup_visible
+        && imu.sample_age_ms >= 0 && imu.sample_age_ms < 500
+        && imu.dynamic_g < 0.08f && imu.rotation_dps < 8.0f;
+}
 void camera_task(void *)
 {
     BuddySceneChange scene;
     int64_t next_scan = now_ms() + 3000;
     unsigned warmup = 0;
+    int64_t next_motion = 0;
+    bool motion_was_sampling = false;
+    unsigned previous_motion_generation = 0;
+    int64_t previous_motion_frame = 0;
     for (;;) {
         if (panorama && (panorama_id != search_id.load() || !buddy_camera_enabled() || buddy_ota_busy())) clear_panorama();
-        if (buddy_ota_busy()) { vTaskDelay(pdMS_TO_TICKS(200)); continue; }
+        if (buddy_ota_busy()) {
+            motion_sampling_active.store(false);
+            if (motion_target) motion_target->reset();
+            motion_was_sampling = false; vTaskDelay(pdMS_TO_TICKS(200)); continue;
+        }
         buddy_faces_tick();
         SearchJob job{};
         if (xQueueReceive(search_jobs, &job, 0) == pdTRUE && job.id == search_id.load()) {
             capture_search(job); scene.reset(); warmup = 0;
         }
-        if (search_id.load()) { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100)); continue; }
+        if (search_id.load()) {
+            motion_sampling_active.store(false);
+            if (motion_target) motion_target->reset();
+            motion_was_sampling = false; ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100)); continue;
+        }
         const bool explicit_request = requested.exchange(false);
         unsigned photo = 0;
         if (xQueueReceive(photo_requests, &photo, 0) == pdTRUE && photo != photo_ticket.load()) photo = 0;
@@ -194,7 +223,14 @@ void camera_task(void *)
             ? buddy_head_person_generation() : 0;
         const bool idle = !buddy_audio_busy() && !microphone_interacting() && !buddy_ai_output_pending();
         const bool face_scan = !person_generation && !photo && buddy_faces_wants_frame(now, idle);
-        const bool track_scan = !person_generation && !photo && buddy_faces_wants_tracking_frame(now);
+        const unsigned motion_generation = buddy_head_follow_generation();
+        const bool motion_sampling = motion_target && !person_generation && !photo && !explicit_request && motion_frame_allowed();
+        motion_sampling_active.store(motion_sampling);
+        if (motion_target && (!motion_sampling || !motion_was_sampling || motion_generation != previous_motion_generation)) {
+            motion_target->reset(); if (motion_was_sampling) motion_resets.fetch_add(1);
+        }
+        motion_was_sampling = motion_sampling; previous_motion_generation = motion_generation;
+        const bool track_scan = motion_sampling && now >= next_motion;
         const bool scan = !photo && buddy_camera_observing() && now >= next_scan
             && !buddy_faces_exclusive_capture()
             && buddy_ai_scene_allowed() && !buddy_audio_busy() && !microphone_interacting();
@@ -203,7 +239,8 @@ void camera_task(void *)
             if (explicit_request) buddy_ai_offer_vision(BuddyVisionFrame{nullptr, 0, now, true, 0});
             finish_photo(photo, nullptr, 0, now);
         } else if (explicit_request || scan || face_scan || track_scan || person_generation || photo) {
-            next_scan = now + 1500;
+            if (scan || photo || explicit_request) next_scan = now + 1500;
+            if (track_scan) next_motion = now + motion_interval_ms;
             const int64_t started = now_ms();
             if (photo) buddy_display_photo_begin();
             camera_fb_t *frame = fresh_frame();
@@ -211,19 +248,38 @@ void camera_task(void *)
                 if (frame) esp_camera_fb_return(frame);
                 ESP_LOGW(tag, "CAMERA_CAPTURE: UNAVAILABLE");
                 if (explicit_request) buddy_ai_offer_vision(BuddyVisionFrame{nullptr, 0, now, true, 0});
+                if (track_scan && motion_target) motion_target->reset();
                 if (person_generation) buddy_head_person_observe(false, 0, started, person_generation);
                 finish_photo(photo, nullptr, 0, now);
                 if (photo) buddy_display_photo_end(false);
             } else {
                 ++captured;
                 const auto grid = grid_from(*frame);
+                if (track_scan && motion_target) {
+                    // Reject a frame if the head/robot moved during capture, or a
+                    // manual command/lease changed its generation in the meantime.
+                    if (motion_frame_allowed() && motion_generation == buddy_head_follow_generation()) {
+                        const auto target = motion_target->update(grid, started);
+                        motion_frames.fetch_add(1);
+                        motion_changed.store(target.changed_cells); motion_region.store(target.cells); motion_threshold.store(target.threshold);
+                        motion_gap.store(previous_motion_frame ? std::max<int64_t>(0, started - previous_motion_frame) : 0);
+                        previous_motion_frame = started;
+                        if (target.cells) motion_candidates.fetch_add(1);
+                        if (target.broad_change) motion_broad.fetch_add(1);
+                        if (target.valid) {
+                            motion_targets.fetch_add(1); motion_x.store(target.x_milli); motion_seen_at.store(now_ms());
+                        }
+                        buddy_head_follow_observe(target.valid, target.x_milli, started, motion_generation);
+                    } else { motion_target->reset(); motion_resets.fetch_add(1); }
+                    next_motion = now_ms() + motion_interval_ms;
+                }
                 if (buddy_head_motion_recent()) { scene.reset(); warmup = 0; }
                 const unsigned score = scene.update(grid);
                 if (warmup < 3) ++warmup;
                 const bool scene_event = scan && score && warmup >= 3 && !buddy_head_motion_recent();
                 if (person_generation && person_generation == buddy_head_person_generation() && !buddy_audio_busy())
                     buddy_faces_process(frame->buf, frame->width, frame->height, false, person_generation, started);
-                else if (face_scan || track_scan) buddy_faces_process(frame->buf, frame->width, frame->height, face_scan);
+                else if (face_scan) buddy_faces_process(frame->buf, frame->width, frame->height, true);
                 if (explicit_request || scene_event || photo) {
                     JpegTarget target{jpeg_buffer};
                     const bool converted = frame2jpg_cb(frame, 65, jpeg_write, &target);
@@ -252,7 +308,7 @@ void camera_task(void *)
             }
         }
         // Notifications expedite a requested snapshot; otherwise poll locally.
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(motion_sampling_active.load() ? 100 : 200));
     }
 }
 } // namespace
@@ -262,6 +318,9 @@ bool buddy_camera_init()
     const bool rotation_ok = buddy_rotation_self_test(); rotation_selftest.store(rotation_ok);
     ESP_LOGI(tag, "CAMERA_ROTATION_TEST: %s (180deg/pixel-order/colors/bounds/odd-size)", rotation_ok ? "PASS" : "FAIL");
     if (!rotation_ok) return false;
+    const bool tracking_ok = motion_detector_self_test(); motion_selftest.store(tracking_ok);
+    ESP_LOGI(tag, "MOTION_TARGET_TEST: %s (low-contrast/left/right/exposure/noise/still/duplicate/broad/reset)", tracking_ok ? "PASS" : "FAIL");
+    if (!tracking_ok) return false;
     const bool scene_ok = buddy_scene_self_test();
     ESP_LOGI(tag, "CAMERA_SCENE_TEST: %s (exposure/noise/foreground/stable)", scene_ok ? "PASS" : "FAIL");
     if (!scene_ok) return false;
@@ -296,6 +355,8 @@ bool buddy_camera_init()
     }
     jpeg_buffer = static_cast<uint8_t *>(heap_caps_malloc(jpeg_capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!jpeg_buffer) { esp_camera_deinit(); return false; }
+    void *motion_memory = heap_caps_calloc(1, sizeof(BuddyMotionTarget), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (motion_memory) { motion_target = new (motion_memory) BuddyMotionTarget; motion_available.store(true); }
     available.store(true);
     ESP_LOGI(tag, "CAMERA_INIT: PASS GC0308 320x240 RGB565 SCCB_RELEASED SNAPSHOT_ONLY (no stream server)");
     return true;
@@ -316,6 +377,13 @@ BuddyCameraSnapshot buddy_camera_snapshot()
 {
     return {buddy_camera_available(), buddy_camera_enabled(), orientation_verified.load(),
         rotation_selftest.load(), rotation_degrees, captured.load(), photos.load(), rotated_frames.load(), rotation_max_us.load()};
+}
+BuddyMotionCameraSnapshot buddy_camera_motion_snapshot()
+{
+    const int64_t at = motion_seen_at.load();
+    return {motion_available.load(), motion_selftest.load(), motion_sampling_active.load(), motion_frames.load(), motion_targets.load(),
+        motion_broad.load(), motion_resets.load(), motion_candidates.load(), motion_changed.load(), motion_region.load(),
+        motion_threshold.load(), motion_gap.load(), motion_x.load(), at ? now_ms()-at : -1};
 }
 bool buddy_camera_request()
 {

@@ -20,6 +20,13 @@ struct BuddyCameraSnapshot {
     unsigned rotation_degrees, captured, photos, rotated_frames, rotation_max_us;
 };
 BuddyCameraSnapshot buddy_camera_snapshot();
+struct BuddyMotionCameraSnapshot {
+    bool available, selftest, sampling;
+    unsigned frames, targets, broad_rejections, resets, candidates, changed_cells, region_cells, threshold, frame_gap_ms;
+    int x_milli;
+    int64_t target_age_ms;
+};
+BuddyMotionCameraSnapshot buddy_camera_motion_snapshot();
 bool buddy_camera_request();
 struct BuddySearchCapture {
     unsigned search_id = 0, view = 0;
