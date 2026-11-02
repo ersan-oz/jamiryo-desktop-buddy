@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.cpp" "buddy.cpp" "audio/microphone.cpp" "network/gemini_live.cpp" "network/object_search.cpp" "network/home_assistant.cpp" "network/home_messenger.cpp" "network/captive_dns.cpp" "network/firmware_update.cpp" "network/remote_update.cpp" "sensors/camera.cpp" "sensors/faces.cpp" "display/eyes.cpp" "memory/user_memory.cpp" "behavior/idle_sleep.cpp" "servo/head_servo.cpp"
+    SRCS "main.cpp" "buddy.cpp" "audio/microphone.cpp" "network/gemini_live.cpp" "network/object_search.cpp" "network/home_assistant.cpp" "network/home_messenger.cpp" "network/captive_dns.cpp" "network/firmware_update.cpp" "network/remote_update.cpp" "sensors/camera.cpp" "sensors/faces.cpp" "display/eyes.cpp" "memory/user_memory.cpp" "behavior/idle_sleep.cpp" "behavior/presence.cpp" "servo/head_servo.cpp"
     INCLUDE_DIRS "."
     PRIV_REQUIRES esp_app_format esp_hw_support esp_system esp_psram heap
                   app_update spi_flash esp_timer freertos log esp_driver_i2c esp_driver_i2s esp_driver_mcpwm

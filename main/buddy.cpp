@@ -240,6 +240,7 @@ void audio_task(void *)
                 vTaskDelay(pdMS_TO_TICKS(110));
                 last_audio_end.store(esp_timer_get_time() / 1000);
                 audio_busy.store(false); cloud_playing = false;
+                buddy_ai_note_playback_finished(cloud_frames);
                 ESP_LOGI(tag, "CLOUD_AUDIO_DONE: frames=%zu status=%s buffer_waits=%u max_wait_ms=%" PRId64,
                          cloud_frames, healthy.load() ? "PASS" : "FAIL", buffer_waits, max_buffer_wait);
             }
