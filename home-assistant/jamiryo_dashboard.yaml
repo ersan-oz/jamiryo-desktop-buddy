@@ -70,6 +70,53 @@
               }
             },
             {
+              "type": "horizontal-stack",
+              "cards": [
+                {
+                  "type": "button",
+                  "name": "Left",
+                  "icon": "mdi:arrow-left-bold",
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "perform-action",
+                    "perform_action": "script.jamiryo_send",
+                    "data": {
+                      "mode": "head",
+                      "message": "left"
+                    }
+                  }
+                },
+                {
+                  "type": "button",
+                  "name": "Center",
+                  "icon": "mdi:crosshairs",
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "perform-action",
+                    "perform_action": "script.jamiryo_send",
+                    "data": {
+                      "mode": "head",
+                      "message": "center"
+                    }
+                  }
+                },
+                {
+                  "type": "button",
+                  "name": "Right",
+                  "icon": "mdi:arrow-right-bold",
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "perform-action",
+                    "perform_action": "script.jamiryo_send",
+                    "data": {
+                      "mode": "head",
+                      "message": "right"
+                    }
+                  }
+                }
+              ]
+            },
+            {
               "type": "markdown",
               "content": "{% set image = state_attr('sensor.jamiryo_messenger','image') %}{% if image %}[Open the latest photo]({{ image }}){% endif %}"
             }
