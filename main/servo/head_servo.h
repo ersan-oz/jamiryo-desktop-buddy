@@ -33,7 +33,8 @@ bool buddy_head_object_current(unsigned token);
 bool buddy_head_object_settled(unsigned token);
 bool buddy_head_object_hold(unsigned token);
 void buddy_head_object_cancel(unsigned token);
-// Anonymous, local face search on the first recognized speech of a conversation.
+// Record conversation activity; automatic attention now follows local motion.
+// Legacy face-search sampling hooks remain for diagnostics only.
 void buddy_head_note_conversation();
 unsigned buddy_head_person_generation(); // Nonzero only while a stationary view needs samples.
 void buddy_head_person_observe(bool valid, int x_milli, int64_t captured_ms, unsigned generation);
@@ -45,6 +46,14 @@ struct BuddyPersonSnapshot {
 BuddyPersonSnapshot buddy_head_person_snapshot();
 
 struct BuddyHeadFollowSettings { bool enabled, reverse; };
+struct BuddyMotionFollowSnapshot {
+    bool selftest, sampling, active;
+    unsigned frames, moves;
+    int x_milli;
+    const char *paused_by;
+    unsigned completed, canceled;
+};
+BuddyMotionFollowSnapshot buddy_head_motion_follow_snapshot();
 BuddyHeadFollowSettings buddy_head_follow_settings();
 bool buddy_head_set_follow(bool enabled, bool reverse);
 bool buddy_head_follow_scanning();

@@ -53,12 +53,17 @@ public:
         target_ = std::clamp(target, minimum_us, maximum_us);
         began_ = now;
         duration_ = std::clamp(duration_ms, 300, 2000);
+        const double distance = target_ - from_;
+        // Carry same-direction velocity into tracking corrections. A bounded
+        // normalized slope keeps this quintic monotonic and prevents overshoot.
+        start_slope_ = distance ? std::clamp(velocity_ * duration_ / distance, 0.0, 2.0) : 0;
         ramping_ = from_ != target_;
+        if (!ramping_) velocity_ = 0;
         return true;
     }
     constexpr void freeze(int64_t now)
     {
-        sample(now); from_ = target_ = pulse_; ramping_ = false;
+        sample(now); from_ = target_ = pulse_; ramping_ = false; velocity_ = start_slope_ = 0;
     }
     constexpr int update(int64_t now)
     {
@@ -82,15 +87,21 @@ private:
     {
         if (!ramping_) return;
         const double t = std::clamp(double(now - began_) / duration_, 0.0, 1.0);
-        const double eased = t * t * (3.0 - 2.0 * t);
+        const double t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t;
+        const double eased = 10*t3 - 15*t4 + 6*t5
+            + start_slope_ * (t - 6*t3 + 8*t4 - 3*t5);
+        const double slope = 30*t2 - 60*t3 + 30*t4
+            + start_slope_ * (1 - 18*t2 + 32*t3 - 15*t4);
         pulse_ = std::clamp(int(from_ + (target_ - from_) * eased + 0.5), minimum_us, maximum_us);
-        if (t >= 1.0) ramping_ = false;
+        velocity_ = (target_ - from_) * slope / duration_;
+        if (t >= 1.0) { ramping_ = false; velocity_ = 0; }
     }
     HeadMode mode_ = HeadMode::Off;
     int pulse_ = center_us, from_ = center_us, target_ = center_us, duration_ = 800;
     int64_t began_ = 0, test_at_ = 0;
     unsigned test_step_ = 0;
     bool ramping_ = false;
+    double velocity_ = 0, start_slope_ = 0;
 };
 
 inline constexpr bool head_motion_self_test()
@@ -136,3 +147,31 @@ inline constexpr bool head_motion_self_test()
 }
 
 static_assert(head_motion_self_test(), "Servo commissioning bounds and cancellation must pass before building firmware");
+
+constexpr bool head_natural_motion_self_test()
+{
+    HeadMotion h; h.command(HeadMode::Hold, 0); h.move_to(1700, 0, 1000);
+    if (h.update(20) != 1500 || h.update(500) != 1600) return false;
+    const int before = h.update(520);
+    h.move_to(1700, 520, 600);
+    // Retargeting in the same direction must not restart at zero speed.
+    if (h.update(520) != before || h.update(540) - before < 3) return false;
+    int previous = h.pulse();
+    for (int now = 560; now <= 1120; now += 20) {
+        const int pulse = h.update(now);
+        if (pulse < previous || pulse > 1700) return false;
+        previous = pulse;
+    }
+    if (h.pulse() != 1700 || h.moving()) return false;
+    // Tracking corrections/reversals stay bounded for different durations.
+    for (int now = 1200; now <= 18000; now += 20) {
+        if (now % 600 == 0) h.move_to((now / 600) % 3 ? 1580 : 1420, now, 700);
+        const int pulse = h.update(now);
+        if (pulse < HeadMotion::minimum_us || pulse > HeadMotion::maximum_us) return false;
+    }
+    h.freeze(18020); const int stopped = h.pulse();
+    if (h.update(19000) != stopped || h.moving()) return false;
+    h.move_to(1500, 19000, 1200);
+    return h.update(20200) == 1500 && !h.moving();
+}
+static_assert(head_natural_motion_self_test(), "Natural easing must preserve smooth retargets, limits, final target and explicit stops");

@@ -1,13 +1,14 @@
 #include "head_servo.h"
 #include "head_motion.h"
 #include "head_boot_test.h"
-#include "face_follow.h"
+#include "motion_follow.h"
 #include "head_routine.h"
 #include "head_actions.h"
 #include "person_seek.h"
 #include "buddy.h"
 #include "audio/microphone.h"
 #include "behavior/idle_sleep.h"
+#include "behavior/presence.h"
 #include "network/gemini_live.h"
 #include "network/firmware_update.h"
 #include "sensors/camera.h"
@@ -39,6 +40,9 @@ std::atomic<unsigned> follow_settings{0}, follow_generation{0}, follow_frames{0}
 std::atomic<int64_t> follow_ready_at{0};
 std::atomic<int> follow_gaze{100}, follow_x{0};
 std::atomic<bool> following{false};
+std::atomic<unsigned> motion_follow_moves{0};
+std::atomic<unsigned> motion_follow_completed{0}, motion_follow_canceled{0};
+std::atomic<int64_t> motion_attention_until{0};
 std::atomic<bool> follow_preview{false};
 std::atomic<bool> routine_window{false};
 std::atomic<RoutinePhase> routine_phase{RoutinePhase::Stopped};
@@ -140,6 +144,25 @@ Activity activity()
     if (buddy_ai_waiting_reply()) return Activity::Think;
     return Activity::Idle;
 }
+const char *follow_blocked_by()
+{
+    const auto mode = shown_mode.load();
+    if (!available.load()) return "servo_unavailable";
+    if (buddy_ota_busy()) return "update";
+    if (!buddy_healthy()) return "unhealthy";
+    if (!buddy_camera_enabled()) return "camera_disabled";
+    if (now_ms() < follow_ready_at.load()) return "command_delay";
+    if (now_ms() < photo_until.load()) return "photo";
+    if (buddy_idle_snapshot().stage != BuddySleepStage::Awake) return "sleep";
+    if (buddy_faces_exclusive_capture()) return "face_enrollment";
+    if (buddy_audio_busy()) return "audio";
+    if (mode != HeadMode::Follow && !routine_window.load()) return "manual_or_startup";
+    // Local VAD also reacts to the servo/room. It must not repeatedly abort a
+    // correction after its first few pulse steps. Listening/thinking can coexist
+    // with motion attention; explicit tools take ownership through head modes.
+    return nullptr;
+}
+bool follow_allowed() { return follow_blocked_by() == nullptr; }
 bool turn_arguments_self_test()
 {
     struct Case { const char *json; bool valid; BuddyHeadDirection direction; };
@@ -176,21 +199,18 @@ bool turn_arguments_self_test()
 void servo_task(void *)
 {
     HeadMotion head;
-    FaceFollow follow;
+    MotionFollow follow;
     HeadRoutine routine;
     HeadTurn turn;
     HeadScan scan;
-    HeadGestures gestures;
+    PresenceHeadGate presence_gate;
     PersonSeek person;
     unsigned person_serial = 0;
     bool was_person_capture = false;
+    bool follow_ramping = false;
     HeadBootTest boot_test(head_settings::boot_test_enabled);
     bool pulses = false;
     int written = HeadMotion::center_us;
-    Activity previous_activity = Activity::Idle;
-    BuddyEmotion previous_emotion = BuddyEmotion::Count;
-    int64_t reaction_at = 0, next_move = 0;
-    int direction = 1;
     bool follow_paused = true;
     bool was_updating = false, was_window = false, routine_sleeping = false;
     bool turn_photo_paused = false;
@@ -213,6 +233,7 @@ void servo_task(void *)
             : was_updating && queued < 0 && (follow_settings.load() & 1) ? static_cast<int>(HeadMode::Routine) : requested_mode;
         was_updating = updating;
         if (request >= 0) {
+            if (follow_ramping) { ++motion_follow_canceled; follow_ramping = false; }
             if (person.active()) { person.cancel(); person_canceled.fetch_add(1); }
             person_pending_until.store(0); person_capture_generation.store(0);
             if (request != static_cast<int>(HeadMode::Object)) object_token.store(0);
@@ -220,7 +241,7 @@ void servo_task(void *)
             // boot sweep, so it cannot override a later stop command.
             boot_test.cancel();
             head.command(static_cast<HeadMode>(request), now);
-            turn.cancel(); scan.cancel(); turn_photo_paused = false; gestures.reset(now);
+            turn.cancel(); scan.cancel(); turn_photo_paused = false;
             if (head.mode() == HeadMode::Scan) scan.begin(now, (follow_settings.load() & 2) != 0);
             if (head.mode() == HeadMode::Directed) {
                 const auto direction = static_cast<BuddyHeadDirection>(queued - turn_request_base - 1);
@@ -234,8 +255,6 @@ void servo_task(void *)
             follow.reset(now); follow_paused = true;
             xQueueReset(observations);
             follow_ready_at.store(now + 900);
-            next_move = now + 15000;
-            previous_emotion = BuddyEmotion::Count;
             if (head.mode() != HeadMode::Off) ignore_until.store(now + 900);
             ESP_LOGI(tag, "SERVO_MODE: %s", head_mode_name(head.mode()));
         } else if (boot_test.take_due(now)) {
@@ -293,7 +312,6 @@ void servo_task(void *)
             if (!person.active()) {
                 const auto resume = (follow_settings.load() & 1) ? HeadMode::Routine : HeadMode::Hold;
                 head.command(resume, now); if (resume == HeadMode::Routine) routine.begin(now, false);
-                gestures.reset(now);
             }
         }
         const bool person_capture = head.mode() == HeadMode::Person && person.wants_frame()
@@ -309,7 +327,6 @@ void servo_task(void *)
                 const auto resume = (follow_settings.load() & 1) ? HeadMode::Routine : HeadMode::Hold;
                 head.command(resume, now);
                 if (resume == HeadMode::Routine) routine.begin(now, false);
-                gestures.reset(now);
             } else if (now < photo_until.load()) {
                 head.freeze(now);
             } else if (head.target() != object_target.load()) {
@@ -349,7 +366,6 @@ void servo_task(void *)
                 if (!sleeping) scans_completed.fetch_add(1);
                 const auto resume = (follow_settings.load() & 1) ? HeadMode::Routine : HeadMode::Hold;
                 head.command(resume, now); if (resume == HeadMode::Routine) routine.begin(now, false);
-                gestures.reset(now);
                 ESP_LOGI(tag, "SERVO_SCAN: %s", sleeping ? "CANCELED_SLEEP" : "COMPLETE");
             }
         }
@@ -362,12 +378,11 @@ void servo_task(void *)
             if (plan.move) head.move_to(plan.target, now, plan.duration_ms);
             const bool speaking_gesture = routine.phase() == RoutinePhase::Hold && activity() == Activity::Speak
                 && now >= photo_until.load() && !buddy_faces_exclusive_capture();
-            if (!quiet && activity() != Activity::Sleep && !speaking_gesture) head.freeze(now);
+            if (routine_freezes_head(quiet, activity() == Activity::Sleep, speaking_gesture, follow_ramping)) head.freeze(now);
             if (!quiet && activity() == Activity::Sleep && !routine_sleeping)
                 head.move_to(HeadMotion::center_us, now, 900);
             routine_sleeping = activity() == Activity::Sleep;
             if (phase != routine.phase()) {
-                gestures.reset(now);
                 ESP_LOGI(tag, "SERVO_ROUTINE: phase=%s target_us=%d",
                     routine_phase_name(routine.phase()), plan.move ? plan.target : head.pulse());
             }
@@ -376,17 +391,23 @@ void servo_task(void *)
         const auto phase = routine.phase();
         boot_pending.store(boot_test.pending() || (head.mode() == HeadMode::Routine
             && phase != RoutinePhase::Hold && phase != RoutinePhase::Track && phase != RoutinePhase::Stopped));
-        const bool window = head.mode() == HeadMode::Routine && routine.tracking();
+        const bool window = head.mode() == HeadMode::Routine
+            && routine_attention_window(routine.phase());
         routine_window.store(window);
         if (window != was_window) {
             follow_generation.fetch_add(1); xQueueReset(observations);
             follow.reset(now); follow_paused = true; was_window = window;
         }
         if (head.mode() == HeadMode::Follow || window) {
-            if (!buddy_head_follow_scanning()) {
+            const char *paused_by = follow_blocked_by();
+            if (paused_by) {
+                // Pause new samples during playback but let the owned, short
+                // correction finish. All harder priorities still cancel it.
+                const bool finish_during_audio = follow_ramping && std::strcmp(paused_by, "audio") == 0;
                 if (!follow_paused && activity() == Activity::Sleep)
                     head.move_to(HeadMotion::center_us, now, 900);
-                else if (activity() != Activity::Sleep) head.freeze(now);
+                else if (follow_ramping && !finish_during_audio && activity() != Activity::Sleep) head.freeze(now);
+                if (follow_ramping && !finish_during_audio) { ++motion_follow_canceled; follow_ramping = false; }
                 follow.reset(now); follow_paused = true;
                 xQueueReset(observations); follow_gaze.store(100); following.store(false);
             } else {
@@ -397,61 +418,42 @@ void servo_task(void *)
                     && observation.at <= now && now - observation.at <= 900) {
                     follow.observe(observation.valid, observation.x, observation.at);
                     follow_x.store(observation.valid ? observation.x : 0); ++follow_frames;
+                    if (observation.valid) motion_attention_until.store(now + 8000);
                     // An invalid or now-centered measurement must stop the old
                     // correction instead of finishing it with stale coordinates.
                     if (!observation.valid || (follow.active() && !follow.gaze_x())) head.freeze(now);
                 }
                 const auto plan = follow.update(now, head.update(now), (follow_settings.load() & 2) != 0);
                 if (plan.move) {
-                    head.move_to(plan.pulse_us, now, 700);
-                    ESP_LOGI(tag, "SERVO_FOLLOW: target_us=%d gaze_x=%d face=%d",
+                    head.move_to(plan.pulse_us, now, 850);
+                    follow_ramping = true;
+                    motion_follow_moves.fetch_add(1); motion_attention_until.store(now + 8000);
+                    ESP_LOGI(tag, "SERVO_MOTION_FOLLOW: target_us=%d gaze_x=%d moving_region=%d",
                              plan.pulse_us, follow.gaze_x(), follow.active());
                 }
                 follow_gaze.store(follow.active() ? follow.gaze_x() : 100);
                 following.store(follow.active());
             }
         } else { follow_gaze.store(100); following.store(false); }
-        if (head.mode() == HeadMode::Routine && routine.phase() == RoutinePhase::Hold) {
-            const Activity current = activity();
-            const bool allowed = buddy_healthy() && !updating && now >= photo_until.load()
-                && !buddy_faces_exclusive_capture()
-                && (current == Activity::Speak || (current == Activity::Idle && !buddy_ai_output_pending()));
-            const auto plan = gestures.update(now, allowed, current == Activity::Speak,
-                head.moving(), (follow_settings.load() & 2) != 0);
-            if (plan.move) {
-                head.move_to(plan.target, now, plan.duration_ms); gesture_moves.fetch_add(1);
-                ESP_LOGI(tag, "SERVO_GESTURE: phase=%s target_us=%d", current == Activity::Speak ? "speaking" : "idle", plan.target);
-            }
-        }
+        const auto presence = buddy_presence_snapshot();
+        const Activity current = activity();
+        const bool presence_mode = (head.mode() == HeadMode::Routine && routine.phase() == RoutinePhase::Hold)
+            || head.mode() == HeadMode::Auto;
+        const bool presence_allowed = presence_mode && buddy_healthy() && !updating
+            && now >= photo_until.load() && now >= motion_attention_until.load() && !buddy_faces_exclusive_capture()
+            && (current == Activity::Speak || (current == Activity::Idle && !buddy_ai_output_pending()));
         if (head.mode() == HeadMode::Auto) {
-            const Activity current = activity();
-            const BuddyEmotion emotion = buddy_ai_emotion();
-            if (current != previous_activity || emotion != previous_emotion) {
-                previous_activity = current; previous_emotion = emotion;
-                // Let the OLED establish the expression before moving the head.
-                reaction_at = now + 160;
-            }
-            if (now < photo_until.load()) {
-                head.freeze(now); next_move = now + 2000;
-            } else if (reaction_at && now >= reaction_at) {
-                int target = HeadMotion::center_us;
-                if (current != Activity::Sleep && current != Activity::Listen) {
-                    if (emotion == BuddyEmotion::Shy) target -= 45;
-                    else if (emotion == BuddyEmotion::Curious || emotion == BuddyEmotion::Surprised) target += 50;
-                    else if (emotion == BuddyEmotion::Happy || emotion == BuddyEmotion::Excited) target += 35 * direction;
-                    else if (emotion == BuddyEmotion::Angry) target -= 35 * direction;
-                }
-                head.move_to(target, now, 900);
-                next_move = now + (current == Activity::Speak ? 1600 : 15000);
-                reaction_at = 0;
-            } else if (!head.moving() && now >= next_move) {
-                if (current == Activity::Speak || current == Activity::Idle) {
-                    direction = -direction;
-                    head.move_to(HeadMotion::center_us + direction * (current == Activity::Speak ? 30 : 45),
-                                 now, current == Activity::Speak ? 850 : 1400);
-                }
-                next_move = now + (current == Activity::Speak ? 1400 : 15000 + esp_random() % 30001);
-            }
+            if (current == Activity::Sleep && !routine_sleeping) head.move_to(HeadMotion::center_us, now, 900);
+            else if (!presence_allowed && current != Activity::Sleep) head.freeze(now);
+            routine_sleeping = current == Activity::Sleep;
+        }
+        if (presence_gate.take(presence, now, presence_allowed, head.moving())) {
+            const int offset = presence.head_offset_us * ((follow_settings.load() & 2) ? -1 : 1);
+            head.move_to(HeadMotion::center_us + offset, now, presence.head_duration_ms);
+            gesture_moves.fetch_add(1);
+            ESP_LOGI(tag, "SERVO_PRESENCE: phase=%s emotion=%s offset_us=%d duration_ms=%d",
+                current == Activity::Speak ? "speaking" : "idle", buddy_emotion_name(presence.emotion),
+                offset, presence.head_duration_ms);
         }
         const int pulse = head.update(now);
         const bool active = head.mode() != HeadMode::Off && !follow_preview.load()
@@ -466,6 +468,7 @@ void servo_task(void *)
             pulses = active;
         }
         if (!ok) {
+            if (follow_ramping) { ++motion_follow_canceled; follow_ramping = false; }
             mcpwm_generator_set_force_level(generator, 0, true);
             head.command(HeadMode::Off, now); turn.cancel(); scan.cancel();
             object_token.store(0);
@@ -473,6 +476,7 @@ void servo_task(void *)
             turn_active.store(false); scan_active.store(false);
             pulses = false; available.store(false);
         }
+        if (ok && follow_ramping && !head.moving()) { ++motion_follow_completed; follow_ramping = false; }
         if (head.moving()) ignore_until.store(now + 700);
         test_gaze.store(head.mode() == HeadMode::Test && pulses && ok ? head.test_gaze_x() : 100);
         if (old_mode == HeadMode::Test && head.mode() == HeadMode::Off && request < 0)
@@ -485,12 +489,12 @@ void servo_task(void *)
 
 bool buddy_head_start()
 {
-    const bool passed = head_motion_self_test();
+    const bool passed = head_motion_self_test() && head_natural_motion_self_test();
     ESP_LOGI(tag, "SERVO_ENGINE_TEST: %s (bounds/easing/retarget/off/test-cancel)", passed ? "PASS" : "FAIL");
     const bool boot_passed = head_boot_test_self_test();
     ESP_LOGI(tag, "SERVO_BOOT_ENGINE_TEST: %s (10000ms/once/cancel/no-repeat/eye-sync)", boot_passed ? "PASS" : "FAIL");
-    const bool follow_passed = face_follow_self_test();
-    ESP_LOGI(tag, "SERVO_FOLLOW_ENGINE_TEST: %s (delay/deadband/bounds/reverse/loss/stale/reset)", follow_passed ? "PASS" : "FAIL");
+    const bool follow_passed = motion_follow_self_test();
+    ESP_LOGI(tag, "SERVO_MOTION_FOLLOW_TEST: %s (delay/deadband/bounds/reverse/loss/reset)", follow_passed ? "PASS" : "FAIL");
     const bool routine_passed = head_routine_self_test();
     ESP_LOGI(tag, "SERVO_ROUTINE_TEST: %s (once-per-boot/sweep/center/pause/periodic-window/cancel)", routine_passed ? "PASS" : "FAIL");
     const bool turn_passed = head_turn_self_test() && turn_arguments_self_test();
@@ -622,14 +626,8 @@ void buddy_head_object_cancel(unsigned token)
 }
 void buddy_head_note_conversation()
 {
-    const int64_t now = now_ms(), previous = conversation_seen.exchange(now);
-    if (person_seek::new_conversation(now, previous)) person_pending_until.store(now + person_seek::pending_ms);
-    else {
-        // Long opening sentences extend an existing opportunity. A manual
-        // cancellation sets it to zero and must never be revived by a late chunk.
-        int64_t pending = person_pending_until.load();
-        if (pending) person_pending_until.compare_exchange_strong(pending, now + person_seek::pending_ms);
-    }
+    conversation_seen.store(now_ms());
+    person_pending_until.store(0); // Motion, not a face sweep, drives automatic attention.
 }
 unsigned buddy_head_person_generation() { return person_capture_generation.load(); }
 void buddy_head_person_observe(bool valid, int x_milli, int64_t at, unsigned generation)
@@ -674,12 +672,16 @@ bool buddy_head_set_follow(bool enabled, bool reverse)
 }
 bool buddy_head_follow_scanning()
 {
-    return available.load() && (shown_mode.load() == HeadMode::Follow || routine_window.load())
-        && !buddy_ota_busy() && buddy_healthy() && buddy_camera_enabled()
-        && now_ms() >= follow_ready_at.load() && now_ms() >= photo_until.load()
-        && buddy_idle_snapshot().stage == BuddySleepStage::Awake
-        && !buddy_faces_exclusive_capture()
-        && !buddy_audio_busy() && !microphone_interacting() && !buddy_ai_output_pending();
+    return follow_allowed() && !moving.load() && !buddy_head_motion_recent();
+}
+BuddyMotionFollowSnapshot buddy_head_motion_follow_snapshot()
+{
+    const char *paused = follow_blocked_by();
+    if (!paused && moving.load()) paused = "head_moving";
+    if (!paused && buddy_head_motion_recent()) paused = "head_settling";
+    return {motion_follow_self_test(), buddy_head_follow_scanning(), following.load(),
+        follow_frames.load(), motion_follow_moves.load(), follow_x.load(), paused ? paused : "",
+        motion_follow_completed.load(), motion_follow_canceled.load()};
 }
 unsigned buddy_head_follow_generation() { return follow_generation.load(); }
 void buddy_head_follow_observe(bool valid, int x_milli, int64_t at, unsigned generation)
@@ -699,7 +701,7 @@ void buddy_head_status()
 {
     ESP_LOGI(tag, "SERVO_STATUS: available=%d mode=%s gpio=2 pulse_us=%d moving=%d limits=1250..1750 boot=%s boot_pending=%d",
              available.load(), head_mode_name(shown_mode.load()), shown_pulse.load(), moving.load(),
-             follow_settings.load() & 1 ? "scan-then-periodic-follow" : head_settings::boot_test_enabled ? "delayed-test" : "off", boot_pending.load());
+             follow_settings.load() & 1 ? "scan-then-motion-attention" : head_settings::boot_test_enabled ? "delayed-test" : "off", boot_pending.load());
     ESP_LOGI(tag, "SERVO_ROUTINE_STATUS: phase=%s interval_ms=30000 window_ms=12000 nominal_scan_degrees=90",
              routine_phase_name(routine_phase.load()));
     ESP_LOGI(tag, "SERVO_VOICE_STATUS: active=%d target_us=%d degrees=%d requests=%u",
@@ -719,7 +721,7 @@ bool buddy_head_command(const char *line)
     else if (std::strcmp(line, "servo-selftest") == 0) {
         ESP_LOGI(tag, "SERVO_ENGINE_TEST: %s (no physical movement)", head_motion_self_test() ? "PASS" : "FAIL");
         ESP_LOGI(tag, "SERVO_BOOT_ENGINE_TEST: %s (no physical movement)", head_boot_test_self_test() ? "PASS" : "FAIL");
-        ESP_LOGI(tag, "SERVO_FOLLOW_ENGINE_TEST: %s (no physical movement)", face_follow_self_test() ? "PASS" : "FAIL");
+        ESP_LOGI(tag, "SERVO_MOTION_FOLLOW_TEST: %s (no physical movement)", motion_follow_self_test() ? "PASS" : "FAIL");
         ESP_LOGI(tag, "SERVO_ROUTINE_TEST: %s (no physical movement)", head_routine_self_test() ? "PASS" : "FAIL");
         ESP_LOGI(tag, "SERVO_VOICE_TEST: %s (no physical movement)", head_turn_self_test() && turn_arguments_self_test() ? "PASS" : "FAIL");
     }
