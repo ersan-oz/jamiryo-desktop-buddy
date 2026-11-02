@@ -1,4 +1,5 @@
 #include "idle_sleep.h"
+#include "presence.h"
 #include "buddy.h"
 #include "audio/microphone.h"
 #include "network/gemini_live.h"
@@ -21,7 +22,7 @@ bool buddy_idle_start()
     ESP_LOGI(tag, "IDLE_SLEEP_TEST: %s (timing/wake/once-only/offline/demo-expiry)", passed ? "PASS" : "FAIL");
     buddy_idle_activity();
     ESP_LOGI(tag, "IDLE_SLEEP_POLICY: drowsy_s=120 asleep_s=180 mumble_s=300 mic=always_listening");
-    return passed;
+    return buddy_presence_start() && passed;
 }
 void buddy_idle_activity()
 {

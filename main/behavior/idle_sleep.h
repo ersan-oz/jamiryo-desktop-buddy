@@ -20,9 +20,9 @@ struct BuddySleepSnapshot {
 class IdleSleepEngine {
 public:
     static constexpr int64_t drowsy_ms = 120000, asleep_ms = 180000, mumble_ms = 300000;
-    void activity(int64_t now) { last_activity_ = now; mumble_used_ = demo_ = false; }
-    void demo(int64_t now) { activity(now); demo_ = true; }
-    BuddySleepSnapshot snapshot(int64_t now)
+    constexpr void activity(int64_t now) { last_activity_ = now; mumble_used_ = demo_ = false; }
+    constexpr void demo(int64_t now) { activity(now); demo_ = true; }
+    constexpr BuddySleepSnapshot snapshot(int64_t now)
     {
         if (demo_ && now - last_activity_ >= 20000) activity(now);
         const int64_t idle = now >= last_activity_ ? now - last_activity_ : 0;
@@ -32,7 +32,7 @@ public:
         return {idle >= asleep ? BuddySleepStage::Asleep : idle >= drowsy ? BuddySleepStage::Drowsy : BuddySleepStage::Awake,
                 idle, idle >= mumble && !mumble_used_, mumble_used_, demo_};
     }
-    bool take_mumble(int64_t now)
+    constexpr bool take_mumble(int64_t now)
     {
         if (!snapshot(now).mumble_due) return false;
         mumble_used_ = true;
