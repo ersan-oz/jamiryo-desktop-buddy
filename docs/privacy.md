@@ -24,6 +24,7 @@ reviewed mesh paths are accepted by the public-file checker.
 | Paired OTA key | Device NVS and a current-user DPAPI-encrypted file on the Windows developer computer. |
 | Microphone audio | Sent to Google while the Live session is listening. The app does not continuously archive it to a local recording file. |
 | Selected visual frames | Some explicit visual requests and enabled scene observations send images to Google. Local camera buffers are temporary RAM. |
+| Motion attention | Coarse luminance differences in temporary RAM; the tracker itself sends no images to cloud services. |
 | Face feature vectors | Local NVS. Enrollment is opt-in; there are no pre-enrolled people in the repository. |
 | Face labels and explicit notes | Stored locally; selected labels/notes can become cloud conversation context. |
 | Requested phone photo | Uploaded to HA's `media/local/jamiryo` area using a device-specific latest filename, then linked by a phone notification. HA and phone caches/backups may retain it. |

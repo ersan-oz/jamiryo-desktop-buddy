@@ -11,7 +11,6 @@ struct BuddyFaceEvent {
 bool buddy_faces_start(BuddyMemoryReply reply); // Local storage; models load only in camera task.
 void buddy_faces_tick(); // Only the camera task owns models and storage mutations.
 bool buddy_faces_wants_frame(int64_t now, bool otherwise_idle);
-bool buddy_faces_wants_tracking_frame(int64_t now);
 bool buddy_faces_tracking_enabled();
 bool buddy_faces_wants_person_frame(int64_t now);
 bool buddy_faces_exclusive_capture();

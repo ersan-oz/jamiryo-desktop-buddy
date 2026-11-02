@@ -2,6 +2,15 @@
 #include "head_motion.h"
 
 enum class RoutinePhase { Stopped, Waiting, Center, Left, Right, Return, Hold, Track };
+constexpr bool routine_attention_window(RoutinePhase phase)
+{
+    // Listening pauses the boot sweep budget, not independent motion attention.
+    return phase == RoutinePhase::Hold || phase == RoutinePhase::Track;
+}
+constexpr bool routine_freezes_head(bool quiet, bool sleeping, bool speaking_gesture, bool motion_correction)
+{
+    return !quiet && !sleeping && !speaking_gesture && !motion_correction;
+}
 inline const char *routine_phase_name(RoutinePhase phase)
 {
     switch (phase) {
@@ -41,8 +50,7 @@ public:
         last_ = now;
         if (paused_) {
             paused_ = false;
-            if (phase_ != RoutinePhase::Track && phase_ != RoutinePhase::Waiting
-                && !(phase_ == RoutinePhase::Hold && now >= due_))
+            if (phase_ != RoutinePhase::Track && phase_ != RoutinePhase::Waiting && phase_ != RoutinePhase::Hold)
                 return {true, target(), static_cast<int>(std::clamp<int64_t>(due_ - now, 300, 2000))};
         }
         if (now < due_) return {};
@@ -53,7 +61,7 @@ public:
         case RoutinePhase::Right: phase_ = RoutinePhase::Return; due_ = now + 2000; return {true, HeadMotion::center_us, 1600};
         case RoutinePhase::Return: phase_ = RoutinePhase::Hold; due_ = now + hold_ms; return {};
         case RoutinePhase::Hold: phase_ = RoutinePhase::Track; due_ = now + track_ms; return {};
-        case RoutinePhase::Track: phase_ = RoutinePhase::Hold; due_ = now + hold_ms; return {true, HeadMotion::center_us, 900};
+        case RoutinePhase::Track: phase_ = RoutinePhase::Hold; due_ = now + hold_ms; return {}; // Keep the last motion target.
         default: return {};
         }
     }
@@ -101,6 +109,9 @@ constexpr bool head_routine_self_test()
     routine.begin(100000, false);
     if (routine.update(129999, true).move || routine.tracking()
         || routine.update(130000, true).move || !routine.tracking()) return false;
+    // Conversation pauses must not undo the last motion target by recentering.
+    routine.begin(100000, false); routine.update(101000, false);
+    if (routine.update(102000, true).move) return false;
     routine.begin(100000, false);
     routine.update(110000, false); routine.update(140000, false);
     routine.update(140020, true);

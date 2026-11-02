@@ -1,6 +1,6 @@
 # Validation, limitations and roadmap
 
-Public snapshot: **1.2.14-public1**, prepared 27 October 2026.
+Public snapshot: **1.2.20-public1**, prepared 2 November 2026.
 
 ## What the labels mean
 
@@ -13,7 +13,7 @@ passed a complete hardware acceptance test.
 | --- | --- |
 | OLED blinks, emotions, pickup and photo effects | Implemented; previously confirmed on the prototype |
 | Gemini voice, memory and HA controls/photo notifications | Implemented; previously exercised on the prototype |
-| Bounded head routines, conversation gaze and object search | Implemented; approximate movement and vision, requiring mounting calibration |
+| Bounded head routines, motion attention and object search | Implemented; approximate movement and vision, requiring mounting calibration |
 | Paired A/B LAN OTA | Implemented; prior prototype updates confirmed; public fork is not deployed by this publication task |
 | HA remote message/read-aloud/photo dashboard | Prototype series 1.2.11-1.2.14 exercised question/reply delivery, audible read-aloud and photos; public fork is separately build/host tested |
 | Public source-only build and privacy checks | See the local validation record below and the actual GitHub Actions results |
@@ -25,7 +25,7 @@ passed a complete hardware acceptance test.
 
 ## Public validation record
 
-Local validation completed on 27 October 2026:
+Local validation completed on 2 November 2026:
 
 - Clean-source ESP-IDF 6.0.1 build for ESP32-S3: **PASS**. A short Windows build
   directory was used to avoid Windows toolchain path-length limits.
@@ -33,9 +33,9 @@ Local validation completed on 27 October 2026:
   rejection, both app-slot sizes, preserved NVS offsets and shared model hashes.
 - Public-file audit: **PASS**. Matched secret values are never written to its output.
 - Host release/privacy/document-link/STL tests: **14 passed**.
-- HA native-Jinja protocol/template groups: **7 passed**, with no network requests.
+- HA native-Jinja protocol/template groups: **9 passed**, with no network requests.
 
-The application is 2,411,904 bytes and fits both `0x2E0000` application slots.
+The application is 2,422,896 bytes and fits both `0x2E0000` application slots.
 The machine-readable record is [validation.json](validation.json). This is a
 build/host validation record, not a new device deployment. GitHub Actions is
 provided separately; consult the actual run results rather than treating the
@@ -45,13 +45,30 @@ No public-fork device flash, new physical servo test or actual home action was p
 for this source refresh. Earlier prototype acceptance results are recorded separately;
 no private room photo, home screenshot, credential or user message is published.
 
+## Motion-attention acceptance
+
+Prototype firmware 1.2.20 was uploaded by paired Wi-Fi OTA, confirmed its expected
+image and boot, and the user confirmed physical tracking of movement. Live
+diagnostics showed completed corrections without mid-ramp cancellation during
+the test. The regression also simulates microphone activity during an eased
+turn. This observation belongs to the assembled prototype, not a new flash of
+the public fork. No private captures, labels or device identifiers are included.
+
+The current public source includes separate local motion attention and face
+recognition, a one-time online greeting, varied idle behavior and direct HA
+head controls. The former automatic conversation-start face search is no longer
+armed. See [motion tracking](motion-tracking.md) for gates and limitations.
+
 ## Practical limits
 
 The robot needs internet/cloud service for conversation and visual interpretation.
 Local reactions continue without it. Reconnection can lose immediate conversation
 context; explicit stored notes are a separate limited memory mechanism.
 
-The current face model is experimental and can miss or confuse people. Object
+Motion attention can follow a moving hand/object without detecting a face,
+but a TV, curtain or other movement can also attract it. The tracker itself
+sends no cloud image. A still target supplies no new movement. The current
+face model is experimental and can miss or confuse people. Object
 search chooses a stopped head view, not an accurate angle or a 3D object coordinate.
 There is no wheel drive or mechanical feedback. Sleep eyes do not establish an
 energy budget; battery runtime and supply peak capability require measurements.

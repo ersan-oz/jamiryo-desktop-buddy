@@ -18,8 +18,17 @@ behavior runs on an M5Stack AtomS3R-CAM with an Echo/Voice Base. Gemini Live
 handles online conversation, and Home Assistant connects the robot to your home.
 
 This is a hobby prototype and a source release, rather than a finished consumer
-product. The public snapshot is **1.2.14-public1**. See [validation and known
+product. The public snapshot is **1.2.20-public1**. See [validation and known
 limits](docs/status.md) before flashing or relying on a feature.
+
+## Latest update
+
+Version 1.2.20 follows localized movement in camera view, including a moving hand
+or object when no face is detected. Listening no longer cuts an eased head turn
+short. Face recognition remains separate. The update also includes varied idle
+blinks and gestures, a once-per-boot online greeting and Home Assistant
+Left / Center / Right buttons. See [motion tracking](docs/motion-tracking.md),
+[usage](docs/user-guide.md) and [release notes](CHANGELOG.md).
 
 ## What it can do
 
@@ -28,7 +37,7 @@ limits](docs/status.md) before flashing or relying on a feature.
 | Expressive OLED eyes | Local blinks, gaze, happy/angry/shy/surprised expressions, pickup `@ @` eyes and a photo shutter effect |
 | Voice conversation | Direct Wi-Fi connection to Gemini Live, native audio replies and a local electronic voice effect |
 | Physical reactions | BMI270 movement, shake and tilt detection with suppression of the robot's own servo/speaker vibration |
-| A movable head | Eased MG90S motion, left/right commands, a look-around routine and intermittent local face tracking |
+| A movable head | Eased MG90S motion, left/right commands, a look-around routine and local camera motion attention |
 | Camera interaction | On-demand visual questions; object searches compare three stopped head positions and aim toward the selected view |
 | Optional familiar faces | Explicit local enrollment, feature matching and occasional name-based greetings |
 | Small persistent memory | Explicit user facts/preferences in NVS; this does not retrain an AI model |

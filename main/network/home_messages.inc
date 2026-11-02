@@ -83,6 +83,8 @@ bool message_publish(const char *notification_error = nullptr)
     cJSON_AddStringToObject(attrs, "error", m.error); cJSON_AddStringToObject(attrs, "image", m.image);
     cJSON_AddStringToObject(attrs, "notification_error", notification_error ? notification_error : "");
     cJSON_AddStringToObject(attrs, "firmware", esp_app_get_description()->version);
+    cJSON_AddBoolToObject(attrs, "head_controls", true);
+    cJSON_AddBoolToObject(attrs, "head_available", buddy_head_snapshot().available);
     char *wire = cJSON_PrintUnformatted(payload); cJSON_Delete(payload); const char *error = nullptr;
     auto *response = wire ? http(m.home, "/api/states/sensor.jamiryo_messenger", wire, error) : nullptr;
     if (wire) { std::memset(wire, 0, std::strlen(wire)); cJSON_free(wire); }
@@ -147,7 +149,8 @@ void message_tick()
         if (now_ms() >= m.publish_at) message_publish();
         return;
     }
-    if (!m.ack_ok || buddy_audio_busy() || microphone_interacting() || buddy_ai_output_pending()) return;
+    if (!m.ack_ok || (m.request.mode != BuddyMessageMode::Head
+        && (buddy_audio_busy() || microphone_interacting() || buddy_ai_output_pending()))) return;
     // Claim durably BEFORE any speech/photo/action. Reconnects never replay it.
     std::strcpy(m.ack.name, m.home.name); std::strcpy(m.ack.url, m.home.url);
     std::strcpy(m.ack.id, m.request.id); m.ack.phase = 1;
@@ -155,7 +158,16 @@ void message_tick()
     m.reply_source = "status";
     if (!message_ack(true)) { m.ack_ok = false; m.state = "error"; std::strcpy(m.error, "claim_not_saved"); message_publish(); return; }
     if (!message_publish()) { message_done("status_unreachable", "İstek başlatılamadı; yeniden gönder."); return; }
-    if (m.request.mode == BuddyMessageMode::Photo) {
+    if (m.request.mode == BuddyMessageMode::Head) {
+        const auto direction = same(m.request.text, "left") ? BuddyHeadDirection::Left
+            : same(m.request.text, "right") ? BuddyHeadDirection::Right : BuddyHeadDirection::Center;
+        const bool available = buddy_head_snapshot().available;
+        const bool queued = available && buddy_head_turn(direction);
+        message_done(queued ? nullptr : available ? "head_busy" : "head_unavailable",
+            queued ? direction == BuddyHeadDirection::Left ? "Sola dönüş komutu alındı."
+                : direction == BuddyHeadDirection::Right ? "Sağa dönüş komutu alındı." : "Ortaya dönüş komutu alındı."
+                : "Kafa şu anda hareket ettirilemiyor; biraz sonra yeniden dene.");
+    } else if (m.request.mode == BuddyMessageMode::Photo) {
         Request photo; photo.action = Action::Photo; photo.epoch = epoch.load(); photo.created = now_ms(); photo.remote = true;
         auto *result = cJSON_CreateObject(); cJSON_AddBoolToObject(result, "applied", false);
         send_photo(m.home, photo, result, error);

@@ -45,3 +45,11 @@ Jamiryo VPN kurmaz. Her yeni HA sunucusunda kurulum tekrarlanır. Ev seçimi
 eski kişisel notları/yüzleri silmez; yeni sahibine teslim ayrı temizlik gerektirir.
 
 Ayrıntılar ve sorun giderme: [İngilizce rehber](../README.md).
+
+## Kafa yön tuşları
+
+**Fotoğraf iste** altında **Sol / Ortala / Sağ** tuşları bulunur. Mesaj veya Gemini
+yanıtı gerekmez. Mevcut kurulumda betik ve panoyu birlikte güncelle; yardımcılar
+ve üç açılır liste seçeneği aynı kalır. İstek yaklaşık 20 saniye yönü korur.
+Özel panoya yalnız [tuş satırını](jamiryo_head_buttons.yaml) ekleyebilirsin, fakat
+gönder betiğini de yenilemelisin. [Ayrıntılı İngilizce rehber](../head-controls.md).

@@ -42,7 +42,9 @@ the expression; speech and head motion remain asynchronous.
 - A separate MCPWM-driven servo task applies easing and pulse limits. Camera
   LEDC timing is retained. Explicit commands temporarily override automatic motion.
 - The automatic head routine can perform an opening sweep, settle, then open
-  periodic local face-follow windows. Tracking is one horizontal axis only.
+  local motion-attention windows. Hold and Track phases both allow camera
+  movement to attract attention while awake; listening/thinking do not abort
+  an owned correction. Tracking is one horizontal axis only.
 - Two minutes without meaningful interaction starts drowsy eyes; around three
   minutes they close with `Zzz`. A later short sleep remark can use the live
   voice when available. This is visual idle behavior, not low-power deep sleep.
@@ -55,7 +57,8 @@ window after real conversation. It does not permanently store every transcript.
 ```mermaid
 flowchart TD
     Camera[GC0308 frame in RAM] --> Rotate[One software 180° rotation]
-    Rotate --> Local[Local face detection / matching / head targeting]
+    Rotate --> Motion[Local luminance differences / motion attention]
+    Rotate --> Local[Local face detection / matching]
     Rotate --> Vision[Explicit visual question or scheduled observation]
     Vision --> Gemini[Selected image sent to Gemini]
     Rotate --> Photo[Explicit send-photo request]
@@ -72,6 +75,12 @@ For “where is that object?” requests, the head pauses at three positions, ca
 fresh views, and sends a numbered composite to Gemini. A validated chosen view
 becomes a bounded head target. The system does not estimate a calibrated 3D
 position, identify objects without image evidence, or continuously pursue them.
+
+The local motion path keeps only a coarse grid in RAM and makes no cloud
+request itself. Frames are ignored during head movement/settling and physical
+robot movement. Playback pauses new samples; an already started short correction
+can finish. Explicit direction/search/photo commands, enrollment, sleep and OTA
+keep priority. See [motion tracking](motion-tracking.md).
 
 ## Memory and familiar faces
 
@@ -95,7 +104,7 @@ not authorization to control the house.
 The optional remote panel commits one `J1:` JSON envelope to a fixed
 `input_text` helper. The robot polls it, validates its mode, length and age,
 then writes an acknowledgement to NVS **before** starting an action. Requests
-expire after two minutes. The last claimed request ID prevents routine polling
+expire after two minutes; direct `head` commands expire after 15 seconds. The last claimed request ID prevents routine polling
 or a restart from replaying it automatically; a claimed action whose outcome
 was lost may be reported as unconfirmed rather than repeated.
 
@@ -116,3 +125,7 @@ partitions are outside those slots. A firmware contract binds the image to the
 ESP32-S3 target, project/layout and exact model hashes. Updates write the inactive
 application slot; startup health checks confirm the new image or allow rollback.
 See [OTA](ota.md) for pairing, the HMAC challenge and limitations.
+
+The dashboard head buttons use a strict `head` mode with only `left`, `center`
+and `right`. They bypass Gemini and audio jobs, and hold the requested direction
+for about 20 seconds. Install the matching updated script and dashboard together.

@@ -6,6 +6,9 @@
 #include "behavior/emotions.h"
 
 bool buddy_ai_start();
+struct BuddyStartupSnapshot { bool selftest; const char *phase; unsigned requests, playbacks, frames; };
+BuddyStartupSnapshot buddy_ai_startup_snapshot();
+void buddy_ai_note_playback_finished(size_t frames);
 bool buddy_ai_configured();
 bool buddy_ai_ready();
 struct BuddyAiSnapshot {

@@ -40,7 +40,7 @@ HumanFaceFeat *extractor = nullptr;
 std::atomic<bool> storage_ready{false}, enabled{true}, model_ready{false}, enrolling{false};
 std::atomic<unsigned> epoch{0}, scans{0}, errors{0}, writes{0}, saved_count{0}, enrollment_samples{0};
 int64_t next_scan = 0, enrollment_deadline = 0, identify_deadline = 0;
-int64_t next_tracking_scan = 0;
+int64_t next_person_scan = 0;
 Request identify_request{};
 std::atomic<bool> identify_waiting{false};
 unsigned last_count = 0, stable_count = 0;
@@ -314,29 +314,22 @@ bool buddy_faces_exclusive_capture() { return enrolling.load() || identify_waiti
 bool buddy_faces_tracking_enabled() { return enabled.load(); }
 bool buddy_faces_wants_person_frame(int64_t now)
 {
-    return enabled.load() && now >= next_tracking_scan && buddy_head_person_generation()
+    return enabled.load() && now >= next_person_scan && buddy_head_person_generation()
         && !buddy_faces_exclusive_capture() && !buddy_audio_busy();
-}
-bool buddy_faces_wants_tracking_frame(int64_t now)
-{
-    return enabled.load() && now >= next_tracking_scan && buddy_head_follow_scanning();
 }
 void buddy_faces_process(uint8_t *pixels, unsigned width, unsigned height, bool recognize,
                          unsigned person_generation, int64_t captured_ms)
 {
-    const unsigned generation = buddy_head_follow_generation();
     if (!pixels || width != 320 || height != 240 || !detection_model()) {
         if (person_generation) buddy_head_person_observe(false, 0, captured_ms, person_generation);
         if (recognize) finish_identify("model_unavailable");
-        next_tracking_scan = now_ms() + 1000; return;
+        return;
     }
     const int64_t started = now_ms();
+    if (person_generation) next_person_scan = started + 300;
     if (recognize) next_scan = started + (enrolling.load() ? 1500 : 3000);
     dl::image::img_t image{pixels, static_cast<uint16_t>(width), static_cast<uint16_t>(height), dl::image::DL_IMAGE_PIX_TYPE_RGB565BE};
     auto &detected = detector->run(image);
-    // Reuse this detection for tracking. Recognition and embedding extraction
-    // keep their original slow schedule; extra follow frames never identify.
-    next_tracking_scan = now_ms() + 500;
     if (person_generation) {
         const dl::detect::result_t *best = nullptr;
         int best_area = 0;
@@ -349,19 +342,7 @@ void buddy_faces_process(uint8_t *pixels, unsigned width, unsigned height, bool 
         buddy_head_person_observe(best != nullptr, x, captured_ms, person_generation);
         return; // Anonymous detection: no embedding, matching, enrollment or greeting.
     }
-    const auto *tracked = detected.size() == 1 ? &detected.front() : nullptr;
-    const bool track_valid = tracked && tracked->box.size() == 4 && tracked->score >= 0.65f
-        && tracked->box[0] >= 0 && tracked->box[1] >= 0
-        && tracked->box[2] <= static_cast<int>(width) && tracked->box[3] <= static_cast<int>(height)
-        && tracked->box[2] - tracked->box[0] >= 35 && tracked->box[3] - tracked->box[1] >= 35;
-    const int x_milli = track_valid ? (tracked->box[0] + tracked->box[2] - static_cast<int>(width)) * 1000 / static_cast<int>(width) : 0;
-    buddy_head_follow_observe(track_valid, x_milli, now_ms(), generation);
-    if (!recognize) {
-        ESP_LOGI(tag, "FACE_TRACK_SCAN: valid=%d faces=%u x_milli=%d score=%.3f elapsed_ms=%lld",
-                 track_valid, static_cast<unsigned>(detected.size()), x_milli, tracked ? tracked->score : 0,
-                 static_cast<long long>(now_ms() - started));
-        return;
-    }
+    if (!recognize) return;
     int seen_index = -1;
     ++scans; last_count = detected.size(); last_frame = now_ms(); last_name[0] = 0; last_similarity = 0;
     last_state = detected.empty() ? "no_face" : detected.size() > 1 ? "multiple_faces" : "unknown";

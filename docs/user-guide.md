@@ -5,7 +5,8 @@
 Switch on the completed robot using its verified normal power arrangement.
 Allow it to connect to Wi-Fi and Gemini before trying voice conversation. OLED
 eyes and local movement reactions are independent of online AI availability.
-Automatic head motion depends on its saved setting, mounting direction and
+With firmware 1.2.20, automatic head attention follows visible movement rather
+than requiring a face. It depends on its saved setting, mounting direction and
 current activity. Keep fingers, cables and objects clear of the rotating head.
 
 The default persona is Turkish, curious and mildly grumpy. Replies are short.
@@ -27,16 +28,46 @@ Commands are interpreted by Gemini and validated locally. The robot should
 explain unavailable/ambiguous results rather than claim success from a spoken
 answer alone. Confirm the physical result of home controls and motor direction.
 
+## Automatic motion attention
+
+Enable **Kafa taraması ve hareket takibi** in robot setup and check the mounting
+direction. If sleepy, speak to wake the robot and wait for its reply. Leave it
+stationary, then move a hand or object slowly on each side of camera view at
+about 30–60 cm. Eyes lead small eased head corrections. Listening/thinking can
+continue during tracking; microphone VAD no longer freezes the turn halfway.
+
+A stationary person/object supplies no new motion target. A television, curtain
+or another moving object can attract attention. This does not determine who is
+speaking. Saved face recognition and occasional name greetings remain separate.
+The former conversation-start face sweep is no longer armed.
+
+Manual directions, object searches, photos, enrollment, sleep and updates take
+priority. Direction commands hold for about 20 seconds. Playback pauses new
+samples; an already started correction can finish. The camera ignores the head's own movement and settling, then rebuilds its baseline. Automatic tracking
+does not reset the sleep timer. [Technical details and limitations](motion-tracking.md).
+
+If it does not follow, check that it is awake, camera/tracking are enabled, the
+robot is stationary and a manual command has finished. If the direction is
+reversed, change the saved **Motor yönü** setting. Test the physical direction
+again; software counters do not measure shaft position.
+
 ## Expressions and physical interaction
 
 Happy, angry, shy and surprised expressions accompany suitable replies. Eyes
-blink and change gaze during idle time. Being picked up/moved can show local
+use single, double and slow blinks with varied gaze and small head gestures.
+Local character values and reply emotions influence these gestures; they are
+not battery measurements or a classification of the user's vocal emotion. Being picked up/moved can show local
 `@ @` eyes for about three seconds. Shake, tilt and pickup are approximate IMU
 classifications; sensor thresholds cannot measure exact lift height.
 
 After a period without meaningful interaction, eyes become drowsy, close and
 show `Zzz`. Speech or meaningful motion can wake this visual behavior. It is
 not battery-saving deep sleep and does not require an exact wake word.
+
+An online startup greeting is requested once per boot after at least ten seconds
+when connected and quiet. It is skipped if the user/HA has already started a
+conversation or the startup window expires, and is not repeated on reconnect.
+The public greeting follows the configured public persona.
 
 ## Memory and faces
 
@@ -67,7 +98,9 @@ script and dedicated dashboard.
 
 Write a short draft, save the field, choose **Ask Jamiryo** or **Read aloud at
 home**, then press the single **Send message** button. **Request photo** is a
-separate shortcut. Wait for completion; failed requests do not replay themselves.
+separate shortcut. The **Left / Center / Right** row below it sends direct head
+commands without a Gemini request. Install both the updated send script and
+dashboard; see [head button setup](../home-assistant/head-controls.md). Wait for completion; failed requests do not replay themselves.
 If speech finished without a returned transcript, the panel labels its display
 as your requested text. Listen to the actual speaker during handover.
 
@@ -84,7 +117,9 @@ plan that separately and revoke credentials that should no longer be usable.
 
 ## Charging and updating
 
-Use the charging input of the actual compatible battery board. Unless that
+Use the charging input of the actual compatible battery board. The prototype
+uses a combined TP4056 charger/boost board. A boost converter alone does not
+establish load-sharing support. Unless that
 board explicitly supports load sharing, turn the robot off while charging.
 The firmware has no battery-percentage reading or low-battery alert in this
 snapshot. A charger's full-charge LED is not a state-of-charge sensor for the ESP32.

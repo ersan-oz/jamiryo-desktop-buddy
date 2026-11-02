@@ -9,14 +9,15 @@ from ha_message_bundle import SCRIPT
 NOW = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
 
 
-def run(message='', mode='ask', previous='', ack='', age=0, state='ready'):
+def run(message='', mode='ask', previous='', ack='', age=0, state='ready', head_available=True):
     values = {'input_text.jamiryo_message': message, 'input_select.jamiryo_mode': 'Ask Jamiryo',
               'input_text.jamiryo_inbox': previous, 'sensor.jamiryo_messenger': state}
     env = NativeEnvironment(undefined=StrictUndefined)
     env.globals.update(states=lambda e: values[e], is_state=lambda e, s: values[e] == s,
                        now=lambda: NOW, utcnow=lambda: NOW,
                        as_timestamp=lambda d: d.timestamp(),
-                       state_attr=lambda e, a: {'last_seen': NOW.timestamp() - age, 'request_id': ack}.get(a))
+                       state_attr=lambda e, a: {'last_seen': NOW.timestamp() - age, 'request_id': ack,
+                           'head_controls': True, 'head_available': head_available}.get(a))
     env.filters['to_json'] = lambda v, ensure_ascii=False: json.dumps(v, ensure_ascii=ensure_ascii, separators=(',', ':'))
     def decode(value, default):
         try:
@@ -53,6 +54,15 @@ def main():
         assert run(words)['text'] == words  # Numeric-looking messages must not change.
     assert run('Lambayı kapat', 'say')['mode'] == 'say'
     assert run('', 'photo')['text'] == ''
+    for direction in ['left','center','right']:
+        result = run(direction,'head')
+        assert result['mode'] == 'head' and result['text'] == direction
+        assert set(result) == {'v','id','mode','text','at'}
+    for invalid in ['Left','90','','right now']:
+        assert rejected(message=invalid,mode='head')
+    assert rejected(message='left',mode='head',head_available=False)
+    pending_head = 'J1:' + json.dumps({'id':'m20261026115959000000','mode':'head','at':int(NOW.timestamp())-16})
+    assert run('left','head',previous=pending_head,ack='other')['text'] == 'left'
     assert rejected(message='') and rejected(message='hello', age=46) and rejected(message='hello', state='processing')
     assert rejected(message='"' * 140)
     old = {'id': 'm20261026115959000000', 'at': int(NOW.timestamp()) - 1}
@@ -63,7 +73,8 @@ def main():
     out = Path(__file__).resolve().parent.parent / '.local' / 'reports'
     out.mkdir(parents=True, exist_ok=True)
     report = {'pass': True, 'network_requests': 0, 'checks': ['native string preservation', 'Turkish and emoji JSON',
-        'say/photo modes', 'empty/offline/busy rejection', 'escaped JSON size bound', 'pending job guard', 'completed job resubmission']}
+        'say/photo modes', 'empty/offline/busy rejection', 'escaped JSON size bound', 'pending job guard',
+        'completed job resubmission', 'head direction allowlist and five-field envelope', 'expired head request guard']}
     (out / 'ha-script-tests.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(json.dumps(report))
 

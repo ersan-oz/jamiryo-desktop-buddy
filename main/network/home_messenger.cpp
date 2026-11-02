@@ -102,6 +102,20 @@ bool self_test()
         if (i == 0) { ok &= !buddy_message_decode(o, 1200, *request); ok &= !buddy_message_decode(o, 980, *request); }
         cJSON_Delete(o);
     }
+    for (const char *direction : {"left", "center", "right", "Left", "90", "", "right now"}) {
+        auto *o = cJSON_CreateObject(); cJSON_AddNumberToObject(o, "v", 1);
+        cJSON_AddStringToObject(o, "id", "m20261101120000000000"); cJSON_AddStringToObject(o, "mode", "head");
+        cJSON_AddStringToObject(o, "text", direction); cJSON_AddNumberToObject(o, "at", 1000);
+        const bool valid = same(direction, "left") || same(direction, "center") || same(direction, "right");
+        ok &= buddy_message_decode(o, 1010, *request) == valid;
+        if (valid) {
+            ok &= request->mode == BuddyMessageMode::Head && same(request->text, direction)
+                && !buddy_messenger_queue(*request) && buddy_message_decode(o, 1015, *request)
+                && !buddy_message_decode(o, 1016, *request) && !buddy_message_decode(o, 994, *request);
+        }
+        cJSON_AddNumberToObject(o, "angle", 180); ok &= !buddy_message_decode(o, 1010, *request);
+        cJSON_Delete(o);
+    }
     ok &= photo_words("Fotoğraf gönder!") && photo_words("FOTOĞRAF GÖNDER")
         && !photo_words("fotoğraf gönderme") && !photo_words("fotoğraf nedir")
         && valid_text("Şimdi nasılsın?") && !valid_text("bad\rtext") && !valid_text("\xc0\x80");
@@ -172,10 +186,15 @@ bool buddy_message_decode(const cJSON *o, double server_now, BuddyMessageRequest
         || !std::isfinite(at->valuedouble) || !std::isfinite(server_now) || std::floor(at->valuedouble) != at->valuedouble
         || server_now - at->valuedouble > 120 || server_now - at->valuedouble < -5) return false;
     for (const char *p = id + (prefixed ? 1 : 0); *p; ++p) if (*p < '0' || *p > '9') return false;
-    if (!same(mode, "ask") && !same(mode, "say") && !same(mode, "photo")) return false;
+    if (!same(mode, "ask") && !same(mode, "say") && !same(mode, "photo") && !same(mode, "head")) return false;
     if (!same(mode, "photo") && !*words) return false;
+    // Explicit dashboard arrows, not free-form AI text. Never execute a stale
+    // motor command after a long disconnect or accept arbitrary angles.
+    if (same(mode, "head") && (server_now - at->valuedouble > 15
+        || (!same(words, "left") && !same(words, "center") && !same(words, "right")))) return false;
     std::strcpy(r.id, id); std::strcpy(r.text, words);
-    r.mode = same(mode, "photo") || (same(mode, "ask") && photo_words(words)) ? BuddyMessageMode::Photo
+    r.mode = same(mode, "head") ? BuddyMessageMode::Head
+        : same(mode, "photo") || (same(mode, "ask") && photo_words(words)) ? BuddyMessageMode::Photo
         : same(mode, "say") ? BuddyMessageMode::Say : BuddyMessageMode::Ask;
     return true;
 }
@@ -188,7 +207,7 @@ bool buddy_messenger_start()
 }
 bool buddy_messenger_queue(const BuddyMessageRequest &r)
 {
-    if (!data || !lock) return false;
+    if (!data || !lock || (r.mode != BuddyMessageMode::Ask && r.mode != BuddyMessageMode::Say)) return false;
     xSemaphoreTake(lock, portMAX_DELAY); const bool ok = data->phase == Phase::Idle;
     if (ok) {
         data->request = r; std::memset(&data->result, 0, sizeof(data->result)); std::strcpy(data->result.id, r.id);

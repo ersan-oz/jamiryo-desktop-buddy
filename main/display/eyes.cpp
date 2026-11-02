@@ -5,6 +5,7 @@
 #include "audio/microphone.h"
 #include "network/gemini_live.h"
 #include "behavior/idle_sleep.h"
+#include "behavior/presence.h"
 #include "servo/head_servo.h"
 #include <algorithm>
 #include <atomic>
@@ -14,7 +15,6 @@
 
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -189,10 +189,8 @@ bool refresh()
 
 void eyes_task(void *)
 {
-    int64_t blink_at = now_ms() + 3500, blink_started = -1;
-    int64_t look_at = now_ms() + 2000, demo_until = 0;
+    int64_t demo_until = 0;
     float gaze_x = 0, gaze_y = 0;
-    int target_x = 0, target_y = 0;
     int64_t emotions_until = 0;
     FacePose pose;
     BuddyEmotion previous_emotion = BuddyEmotion::Count;
@@ -227,7 +225,7 @@ void eyes_task(void *)
         const auto sleep = buddy_idle_snapshot();
         if (sleep.stage != previous_sleep) {
             ESP_LOGI(tag, "OLED_SLEEP: %s idle_ms=%lld", buddy_sleep_name(sleep.stage), static_cast<long long>(sleep.idle_ms));
-            if (sleep.stage == BuddySleepStage::Awake) { blink_started = -1; gaze_x = gaze_y = 0; }
+            if (sleep.stage == BuddySleepStage::Awake) { gaze_x = gaze_y = 0; }
             previous_sleep = sleep.stage;
         }
         if (preview_requested.exchange(false)) preview_frames();
@@ -238,7 +236,6 @@ void eyes_task(void *)
         if (demo.exchange(false)) {
             demo_until = now + 8000;
             emotions_until = 0;
-            blink_started = -1; blink_at = now + 3000; look_at = now + 2300;
             ESP_LOGI(tag, "OLED_TEST: START (grid 2s, then eyes/blink/look)");
         }
         std::memset(frame, 0, sizeof(frame));
@@ -252,12 +249,11 @@ void eyes_task(void *)
         int servo_gaze = 0;
         const bool servo_test = buddy_head_test_gaze(servo_gaze);
         if (servo_was_active && !servo_test) {
-            gaze_x = gaze_y = 0; target_x = target_y = 0;
-            blink_started = -1; blink_at = now + 2500; look_at = now + 2000;
+            gaze_x = gaze_y = 0;
             ESP_LOGI(tag, "OLED_SERVO_TEST: DONE (returned to live face)");
         }
         if (photo_was_active && !photo_active) {
-            blink_started = -1; blink_at = now + 2500; gaze_x = gaze_y = 0;
+            gaze_x = gaze_y = 0;
             ESP_LOGI(tag, "OLED_PHOTO: DONE (returned to live face)");
         }
         if (servo_test) {
@@ -270,7 +266,6 @@ void eyes_task(void *)
             servo_direction = direction;
             pose = face_pose(BuddyEmotion::Neutral);
             gaze_x = servo_gaze; gaze_y = 0;
-            blink_started = -1; blink_at = now + 2500;
             render_face(frame, pose, servo_gaze, 0, 1.0f, FaceActivity::Idle, now, false);
         } else if (photo_active) {
             render_photo_face(frame, focus ? now - focus : 0, shutter ? now - shutter : -1);
@@ -283,8 +278,7 @@ void eyes_task(void *)
             render_pickup_face(frame, now - picked_up);
             pickup_drawn = true;
             pose = face_pose(BuddyEmotion::Neutral);
-            gaze_x = gaze_y = 0; target_x = target_y = 0;
-            blink_started = -1; blink_at = now + 2500; look_at = now + 2000;
+            gaze_x = gaze_y = 0;
         } else if (demo_until && demo_until - now > 6000) {
             // Four borders and all eight page bands expose addressing errors.
             for (int x = 0; x < width; ++x) { pixel(x, 0); pixel(x, height - 1); }
@@ -294,7 +288,8 @@ void eyes_task(void *)
             for (int y = 8; y < height; y += 8)
                 for (int x = 0; x < width; x += 2) pixel(x, y);
         } else {
-            BuddyEmotion emotion = buddy_ai_emotion();
+            const auto presence = buddy_presence_snapshot();
+            BuddyEmotion emotion = presence.emotion;
             FaceActivity activity = current_activity();
             const bool live_face = !emotions_until || now >= emotions_until;
             const bool sleepy = sleep.stage != BuddySleepStage::Awake && live_face;
@@ -315,12 +310,8 @@ void eyes_task(void *)
                          face_activity_name(activity), emotions_until && now < emotions_until ? "demo" : "live");
                 previous_emotion = emotion; previous_activity = activity;
             }
-            if (now >= look_at) {
-                target_x = static_cast<int>(esp_random() % 13) - 6;
-                target_y = static_cast<int>(esp_random() % 7) - 3;
-                look_at = now + 2000 + esp_random() % 4000;
-            }
-            int gx_target = target_x, gy_target = target_y;
+            // Both eyes and head consume the same locally paced intent.
+            int gx_target = presence.gaze_x, gy_target = presence.gaze_y;
             if (emotion == BuddyEmotion::Shy) { gx_target /= 3; gy_target = 4; }
             if (emotion == BuddyEmotion::Sleepy) { gx_target = 0; gy_target = 4; }
             if (activity == FaceActivity::Listening || activity == FaceActivity::Speaking) { gx_target = gy_target = 0; }
@@ -334,14 +325,13 @@ void eyes_task(void *)
                 gaze_x = 0;
                 gaze_y = 4 + std::sin(now * 0.0012f);
             }
-            pose.approach(target_pose, sleepy ? 0.055f : 0.22f);
-            if (now >= blink_at) {
-                blink_started = now;
-                blink_at = now + 3000 + esp_random() % 5000;
+            if (!sleepy && activity == FaceActivity::Idle) {
+                // Subpixel breathing changes shape gently, without a new task.
+                const float breath = std::sin(now * 0.0014f) * 0.45f;
+                target_pose.left_height += breath; target_pose.right_height += breath;
             }
-            float openness = 1.0f;
-            if (!sleeping && blink_started >= 0 && now - blink_started < 200)
-                openness = std::abs(static_cast<float>(now - blink_started) - 100.0f) / 100.0f;
+            pose.approach(target_pose, sleepy ? 0.055f : 0.22f);
+            const float openness = sleeping ? 1.0f : presence.openness;
             const int gx = static_cast<int>(std::lround(gaze_x)), gy = static_cast<int>(std::lround(gaze_y));
             sleep_marks = sleeping && pose.left_height <= 3.0f && pose.right_height <= 3.0f;
             render_face(frame, pose, gx, gy, openness, activity, now, sleep_marks);

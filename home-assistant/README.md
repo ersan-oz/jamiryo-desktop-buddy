@@ -168,3 +168,10 @@ Official references: [helpers](https://www.home-assistant.io/integrations/input_
 [packages](https://www.home-assistant.io/docs/configuration/packages/),
 [dashboards](https://www.home-assistant.io/dashboards/dashboards/),
 [phone images](https://companion.home-assistant.io/docs/notifications/notification-attachments/).
+
+## Head controls in the current dashboard
+
+**Left / Center / Right** buttons sit below **Request photo**. They need no message
+or Gemini call. Existing installations must update the send script and dashboard
+together; see [head controls](head-controls.md). Helpers and dropdown options stay
+the same. A direction command holds for about 20 seconds before automatic motion resumes.
