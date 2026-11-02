@@ -3,7 +3,7 @@
 #include <cstdint>
 #include "cJSON.h"
 
-enum class BuddyMessageMode { Ask, Say, Photo };
+enum class BuddyMessageMode { Ask, Say, Photo, Head };
 struct BuddyMessageRequest { char id[33]{}, text[561]{}; BuddyMessageMode mode = BuddyMessageMode::Ask; };
 struct BuddyMessageResult { char id[33]{}, text[2049]{}, error[48]{}; bool audio = false, truncated = false, transcript = false; };
 bool buddy_message_decode(const cJSON *object, double server_now, BuddyMessageRequest &request);

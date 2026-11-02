@@ -3,6 +3,8 @@
 #include "servo/head_servo.h"
 #include "buddy.h"
 #include "display/eyes.h"
+#include "behavior/presence.h"
+#include "behavior/idle_sleep.h"
 #include "sensors/camera.h"
 #include "gemini_live.h"
 #include "home_assistant.h"
@@ -131,6 +133,7 @@ esp_err_t status(httpd_req_t *request)
     cJSON_AddNumberToObject(motor, "requested_degrees", head.requested_degrees);
     cJSON_AddNumberToObject(motor, "voice_requests", head.voice_requests);
     cJSON_AddBoolToObject(motor, "voice_selftest_pass", head.voice_selftest);
+    cJSON_AddBoolToObject(motor, "natural_motion_selftest_pass", head_natural_motion_self_test());
     cJSON_AddBoolToObject(motor, "actions_selftest_pass", head.actions_selftest);
     cJSON_AddBoolToObject(motor, "scan_active", head.scan_active);
     cJSON_AddNumberToObject(motor, "scan_requests", head.scan_requests);
@@ -140,6 +143,33 @@ esp_err_t status(httpd_req_t *request)
     const auto head_settings = buddy_head_follow_settings();
     cJSON_AddBoolToObject(motor, "automatic_enabled", head_settings.enabled);
     cJSON_AddBoolToObject(motor, "reverse", head_settings.reverse);
+    const auto tracking = buddy_camera_motion_snapshot(); const auto tracking_head = buddy_head_motion_follow_snapshot();
+    auto *attention = cJSON_AddObjectToObject(root, "motion_tracking");
+    cJSON_AddStringToObject(attention, "source", "local_frame_difference");
+    cJSON_AddBoolToObject(attention, "available", tracking.available);
+    cJSON_AddBoolToObject(attention, "detector_selftest_pass", tracking.selftest);
+    cJSON_AddBoolToObject(attention, "controller_selftest_pass", tracking_head.selftest);
+    cJSON_AddBoolToObject(attention, "sampling", tracking.sampling && tracking_head.sampling);
+    cJSON_AddStringToObject(attention, "paused_by", tracking_head.paused_by);
+    const auto sleep = buddy_idle_snapshot();
+    cJSON_AddStringToObject(attention, "sleep_stage", buddy_sleep_name(sleep.stage));
+    cJSON_AddNumberToObject(attention, "idle_ms", sleep.idle_ms);
+    cJSON_AddBoolToObject(attention, "active", tracking_head.active);
+    cJSON_AddNumberToObject(attention, "frames", tracking.frames);
+    cJSON_AddNumberToObject(attention, "targets", tracking.targets);
+    cJSON_AddNumberToObject(attention, "moves", tracking_head.moves);
+    cJSON_AddNumberToObject(attention, "completed", tracking_head.completed);
+    cJSON_AddNumberToObject(attention, "canceled", tracking_head.canceled);
+    cJSON_AddNumberToObject(attention, "observations", tracking_head.frames);
+    cJSON_AddNumberToObject(attention, "candidates", tracking.candidates);
+    cJSON_AddNumberToObject(attention, "changed_cells", tracking.changed_cells);
+    cJSON_AddNumberToObject(attention, "region_cells", tracking.region_cells);
+    cJSON_AddNumberToObject(attention, "threshold", tracking.threshold);
+    cJSON_AddNumberToObject(attention, "frame_gap_ms", tracking.frame_gap_ms);
+    cJSON_AddNumberToObject(attention, "broad_rejections", tracking.broad_rejections);
+    cJSON_AddNumberToObject(attention, "resets", tracking.resets);
+    cJSON_AddNumberToObject(attention, "x_milli", tracking.x_milli);
+    cJSON_AddNumberToObject(attention, "target_age_ms", tracking.target_age_ms);
     const auto object = buddy_object_snapshot(); auto *search = cJSON_AddObjectToObject(root, "object_search");
     cJSON_AddBoolToObject(search, "active", object.active); cJSON_AddBoolToObject(search, "selftest_pass", object.selftest);
     cJSON_AddStringToObject(search, "state", object.state);
@@ -178,6 +208,18 @@ esp_err_t status(httpd_req_t *request)
     cJSON_AddNumberToObject(display, "write_errors", face.write_errors);
     cJSON_AddNumberToObject(display, "pickups", face.pickups);
     cJSON_AddNumberToObject(display, "last_pickup_age_ms", face.last_pickup_age_ms);
+    const auto presence = buddy_presence_snapshot(); auto *character = cJSON_AddObjectToObject(root, "presence");
+    cJSON_AddBoolToObject(character, "selftest_pass", buddy_presence_selftest_pass());
+    cJSON_AddStringToObject(character, "emotion", buddy_emotion_name(presence.emotion));
+    cJSON_AddNumberToObject(character, "energy", presence.energy);
+    cJSON_AddNumberToObject(character, "curiosity", presence.curiosity);
+    cJSON_AddNumberToObject(character, "comfort", presence.comfort);
+    cJSON_AddNumberToObject(character, "blinks", presence.blinks);
+    cJSON_AddNumberToObject(character, "double_blinks", presence.double_blinks);
+    cJSON_AddNumberToObject(character, "slow_blinks", presence.slow_blinks);
+    cJSON_AddNumberToObject(character, "glances", presence.glances);
+    cJSON_AddNumberToObject(character, "engagements", presence.engagements);
+    cJSON_AddNumberToObject(character, "head_sequence", presence.head_sequence);
     const auto camera = buddy_camera_snapshot(); auto *view = cJSON_AddObjectToObject(root, "camera");
     cJSON_AddBoolToObject(view, "available", camera.available);
     cJSON_AddBoolToObject(view, "enabled", camera.enabled);
@@ -202,6 +244,12 @@ esp_err_t status(httpd_req_t *request)
     cJSON_AddNumberToObject(messenger, "failure_age_ms", messages.failure_age_ms);
     cJSON_AddStringToObject(messenger, "last_failure", messages.last_failure);
     cJSON_AddNumberToObject(messenger, "empty_boundaries", messages.empty_boundaries);
+    const auto startup = buddy_ai_startup_snapshot(); auto *hello = cJSON_AddObjectToObject(root, "startup_greeting");
+    cJSON_AddBoolToObject(hello, "selftest_pass", startup.selftest);
+    cJSON_AddStringToObject(hello, "phase", startup.phase);
+    cJSON_AddNumberToObject(hello, "requests", startup.requests);
+    cJSON_AddNumberToObject(hello, "playbacks", startup.playbacks);
+    cJSON_AddNumberToObject(hello, "frames", startup.frames);
     const auto ai = buddy_ai_snapshot(); auto *chat = cJSON_AddObjectToObject(root, "conversation");
     cJSON_AddBoolToObject(chat, "ready", ai.ready);
     cJSON_AddBoolToObject(chat, "guard_active", ai.conversation_guard);
